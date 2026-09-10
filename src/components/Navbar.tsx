@@ -45,25 +45,29 @@ export const Navbar: React.FC = () => {
             </div>
 
             {(userData.role === 'admin' || userData.role === 'organizer') && (
-              isAdminRoute ? (
-                <button
+              <div className="flex items-center gap-1.5 sm:gap-2 px-2 py-1 bg-emerald-800/40 rounded-lg mr-1 sm:mr-2">
+                <span 
                   onClick={() => navigate('/player')}
-                  title="Player View"
-                  className="p-2 rounded-lg bg-emerald-800 hover:bg-emerald-900 transition flex items-center text-xs gap-1"
+                  className={`cursor-pointer text-[9px] sm:text-[10px] font-black uppercase tracking-wider transition-colors duration-200 ${!isAdminRoute ? 'text-white' : 'text-emerald-500 hover:text-emerald-400'}`}
                 >
-                  <User className="w-4 h-4 text-emerald-200" />
-                  <span className="hidden md:inline font-medium">Player View</span>
-                </button>
-              ) : (
+                  Player
+                </span>
                 <button
-                  onClick={() => navigate('/admin')}
-                  title="Admin Dashboard"
-                  className="p-2 rounded-lg bg-emerald-800 hover:bg-emerald-900 transition flex items-center text-xs gap-1"
+                  onClick={() => navigate(isAdminRoute ? '/player' : '/admin')}
+                  className={`w-9 h-5 rounded-full relative p-0.5 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-1 focus:ring-offset-emerald-700 ${isAdminRoute ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                  title={isAdminRoute ? "Switch to Player View" : "Switch to Admin Dashboard"}
                 >
-                  <Shield className="w-4 h-4 text-amber-400" />
-                  <span className="hidden md:inline font-medium">Admin Dashboard</span>
+                  <div className={`w-4 h-4 bg-white rounded-full shadow-md transition-transform duration-300 flex items-center justify-center ${isAdminRoute ? 'translate-x-4' : 'translate-x-0'}`}>
+                    {isAdminRoute ? <Shield className="w-2.5 h-2.5 text-amber-500" /> : <User className="w-2.5 h-2.5 text-emerald-500" />}
+                  </div>
                 </button>
-              )
+                <span 
+                  onClick={() => navigate('/admin')}
+                  className={`cursor-pointer text-[9px] sm:text-[10px] font-black uppercase tracking-wider transition-colors duration-200 ${isAdminRoute ? 'text-white' : 'text-emerald-500 hover:text-emerald-400'}`}
+                >
+                  Admin
+                </span>
+              </div>
             )}
 
             <button
