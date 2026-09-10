@@ -289,19 +289,7 @@ export const AdminMatches: React.FC = () => {
         ) : (
           matches.map(match => (
             <div key={match.id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 relative">
-              <div className="absolute top-4 right-4 flex gap-2">
-                <button onClick={() => handleShare(match)} className="p-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg" title="Share via WhatsApp">
-                  <Share2 className="w-4 h-4" />
-                </button>
-                <button onClick={() => handleEditClick(match)} className="p-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg" title="Edit Match">
-                  <Edit2 className="w-4 h-4" />
-                </button>
-                <button onClick={() => handleDelete(match)} className="p-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg" title="Delete Match">
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="flex justify-between items-start mb-4 pr-24">
+              <div className="flex flex-col md:flex-row justify-between items-start mb-4 gap-4">
                 <div>
                   <h3 className="text-lg font-bold flex items-center gap-2">
                     <Calendar className="w-5 h-5 text-emerald-600" />
@@ -311,12 +299,27 @@ export const AdminMatches: React.FC = () => {
                     <MapPin className="w-4 h-4" /> {match.venue}
                   </p>
                 </div>
-                <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${
-                  match.status === 'dormant' ? 'bg-gray-100 text-gray-600' : 
-                  match.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'
-                }`}>
-                  {match.status}
-                </span>
+                
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${
+                    match.status === 'dormant' ? 'bg-gray-100 text-gray-600' : 
+                    match.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'
+                  }`}>
+                    {match.status}
+                  </span>
+                  
+                  <div className="flex gap-2">
+                    <button onClick={() => handleShare(match)} className="p-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg" title="Share via WhatsApp">
+                      <Share2 className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => handleEditClick(match)} className="p-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg" title="Edit Match">
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => handleDelete(match)} className="p-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg" title="Delete Match">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-gray-50 rounded-lg p-3 text-sm">
