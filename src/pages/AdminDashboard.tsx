@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Navbar } from '../components/Navbar';
-import { collection, query, where, onSnapshot, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, updateDoc, deleteDoc, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import type { AppUser, Tier, UserRole } from '../types';
 import { Check, X, ShieldAlert, Star, Edit2 } from 'lucide-react';
@@ -82,11 +82,31 @@ export const AdminDashboard: React.FC = () => {
   };
 
   const handleReject = async (uid: string) => {
-    if (window.confirm('Are you sure you want to reject and delete this registration?')) {
+    if (window.confirm('Are you sure you want to completely remove this player? They will be deleted from all matches.')) {
       try {
+        // First scrub them from all matches so counts update correctly
+        const matchesSnap = await getDocs(collection(db, 'matches'));
+        matchesSnap.forEach(async (matchDoc) => {
+          const data = matchDoc.data() as any;
+          if (
+            (data.roster && data.roster.includes(uid)) || 
+            (data.waitlist && data.waitlist.includes(uid)) || 
+            (data.teamRed && data.teamRed.includes(uid)) || 
+            (data.teamWhite && data.teamWhite.includes(uid))
+          ) {
+            await updateDoc(doc(db, 'matches', matchDoc.id), {
+              roster: data.roster ? data.roster.filter((id: string) => id !== uid) : [],
+              waitlist: data.waitlist ? data.waitlist.filter((id: string) => id !== uid) : [],
+              teamRed: data.teamRed ? data.teamRed.filter((id: string) => id !== uid) : [],
+              teamWhite: data.teamWhite ? data.teamWhite.filter((id: string) => id !== uid) : []
+            });
+          }
+        });
+
+        // Then delete the user profile
         await deleteDoc(doc(db, 'users', uid));
       } catch (err) {
-        console.error("Failed to reject user:", err);
+        console.error("Failed to remove user:", err);
       }
     }
   };
