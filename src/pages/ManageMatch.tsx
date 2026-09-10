@@ -91,11 +91,39 @@ export const ManageMatch: React.FC = () => {
   
   const [saving, setSaving] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [guestName, setGuestName] = useState('');
+
+  const handleAddGuest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!guestName.trim() || !matchId || !match) return;
+    
+    // Roster full check
+    const maxPlayers = match.maxPlayers || 12;
+    if (match.roster.length >= maxPlayers) {
+      alert(`Roster is full (${maxPlayers} players). Remove someone before adding a guest.`);
+      return;
+    }
+
+    try {
+      const guestUid = `guest:${guestName.trim()}:${Date.now()}`;
+      const newRoster = [...match.roster, guestUid];
+      await updateDoc(doc(db, 'matches', matchId), { roster: newRoster });
+      
+      // Update local unassigned state so the drag-and-drop pool catches it immediately
+      setUnassigned(prev => [...prev, guestUid]);
+      setGuestName('');
+    } catch (err) {
+      console.error(err);
+      alert('Failed to add guest.');
+    }
+  };
 
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
+
+  const dndInitialized = React.useRef(false);
 
   // Fetch Match Data
   useEffect(() => {
@@ -110,21 +138,40 @@ export const ManageMatch: React.FC = () => {
         if (allUids.length > 0) {
           const userMap: Record<string, AppUser> = {};
           
+          const realUids = allUids.filter(uid => !uid.startsWith('guest:'));
+          const guestUids = allUids.filter(uid => uid.startsWith('guest:'));
+          
+          // Inject guests seamlessly into local state
+          guestUids.forEach(uid => {
+            const guestName = uid.split(':')[1];
+            userMap[uid] = {
+              uid: uid,
+              name: guestName + ' (Guest)',
+              role: 'player',
+              tier: 2,
+              preferredPos: 'ANY',
+              attackRating: 5,
+              defRating: 5,
+            } as AppUser;
+          });
+          
           // Firebase in queries limit is 10, chunk it
           const chunkSize = 10;
-          for (let i = 0; i < allUids.length; i += chunkSize) {
-            const chunk = allUids.slice(i, i + chunkSize);
-            const q = query(collection(db, 'users'), where('uid', 'in', chunk));
-            const usersSnap = await getDocs(q);
-            usersSnap.forEach(u => {
-              userMap[u.id] = u.data() as AppUser;
-            });
+          for (let i = 0; i < realUids.length; i += chunkSize) {
+            const chunk = realUids.slice(i, i + chunkSize);
+            if (chunk.length > 0) {
+              const q = query(collection(db, 'users'), where('uid', 'in', chunk));
+              const usersSnap = await getDocs(q);
+              usersSnap.forEach(u => {
+                userMap[u.id] = u.data() as AppUser;
+              });
+            }
           }
           
           setPlayers(userMap);
           
-          // Populate DND states if they haven't been modified locally
-          if (unassigned.length === 0 && teamRed.length === 0 && teamWhite.length === 0) {
+          // Populate DND states ONLY on first load
+          if (!dndInitialized.current) {
             if (m.teamRed.length > 0 || m.teamWhite.length > 0) {
               setTeamRed(m.teamRed);
               setTeamWhite(m.teamWhite);
@@ -133,12 +180,43 @@ export const ManageMatch: React.FC = () => {
             } else {
               setUnassigned(m.roster);
             }
+            dndInitialized.current = true;
           }
         }
       }
     });
     return () => unsubscribe();
   }, [matchId]);
+
+  // Synchronize dynamic roster additions (e.g. if someone RSVPs while admin is editing)
+  useEffect(() => {
+    if (!match || !dndInitialized.current) return;
+    
+    // We use functional state updates to safely read the latest DND arrays without dependency loops
+    setUnassigned(prevUnassigned => {
+      let isUpdated = false;
+      let newUnassigned = [...prevUnassigned];
+      
+      // We need to check teamRed and teamWhite to know if a player is truly unassigned.
+      // Since we can't easily read them here without stale state, we'll sync using the last known arrays.
+      // A safe trick is to just add any ID from match.roster that doesn't exist in ANY of the 3 arrays.
+      setTeamRed(prevRed => {
+        setTeamWhite(prevWhite => {
+          const existing = new Set([...newUnassigned, ...prevRed, ...prevWhite]);
+          match.roster.forEach(uid => {
+            if (!existing.has(uid)) {
+              newUnassigned.push(uid);
+              isUpdated = true;
+            }
+          });
+          return prevWhite;
+        });
+        return prevRed;
+      });
+      
+      return isUpdated ? newUnassigned : prevUnassigned;
+    });
+  }, [match?.roster]);
 
   const handleDragStart = (event: any) => {
     setActiveId(event.active.id);
@@ -384,6 +462,28 @@ export const ManageMatch: React.FC = () => {
                   </div>
                 )}
               </DroppableContainer>
+              
+              {!isPublished && (
+                <form onSubmit={handleAddGuest} className="mt-4 pt-4 border-t border-gray-200">
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">Add Temporary Guest</label>
+                  <div className="flex gap-2">
+                    <input 
+                      type="text" 
+                      placeholder="Guest Name..." 
+                      value={guestName}
+                      onChange={e => setGuestName(e.target.value)}
+                      className="flex-grow text-sm border-gray-300 rounded-lg focus:ring-emerald-500 focus:border-emerald-500"
+                    />
+                    <button 
+                      type="submit" 
+                      disabled={!guestName.trim()}
+                      className="bg-gray-200 hover:bg-emerald-600 hover:text-white disabled:opacity-50 text-gray-700 font-bold px-3 rounded-lg transition"
+                    >
+                      Add
+                    </button>
+                  </div>
+                </form>
+              )}
             </div>
 
             {/* Team Red */}

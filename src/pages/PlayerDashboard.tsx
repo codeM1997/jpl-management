@@ -41,15 +41,26 @@ export const PlayerDashboard: React.FC = () => {
         if (uids.length > 0) {
           const names: Record<string, string> = {};
           
+          const realUids = uids.filter(uid => !uid.startsWith('guest:'));
+          const guestUids = uids.filter(uid => uid.startsWith('guest:'));
+          
+          // Synthesize guest names instantly
+          guestUids.forEach(uid => {
+            const guestName = uid.split(':')[1];
+            names[uid] = guestName + ' (Guest)';
+          });
+          
           // Firestore 'in' queries support max 10 items.
           const chunkSize = 10;
-          for (let i = 0; i < uids.length; i += chunkSize) {
-            const chunk = uids.slice(i, i + chunkSize);
-            const uidsQuery = query(collection(db, 'users'), where('uid', 'in', chunk));
-            const snap = await getDocs(uidsQuery);
-            snap.forEach((d: any) => {
-              names[d.data().uid] = d.data().name;
-            });
+          for (let i = 0; i < realUids.length; i += chunkSize) {
+            const chunk = realUids.slice(i, i + chunkSize);
+            if (chunk.length > 0) {
+              const uidsQuery = query(collection(db, 'users'), where('uid', 'in', chunk));
+              const snap = await getDocs(uidsQuery);
+              snap.forEach((d: any) => {
+                names[d.data().uid] = d.data().name;
+              });
+            }
           }
           setTeamNames(names);
         }
