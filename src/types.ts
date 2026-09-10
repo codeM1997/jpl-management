@@ -30,6 +30,7 @@ export interface Match {
   tier2UnlockTime: string; // ISO string
   tier3UnlockTime: string; // ISO string
   maxPlayers: number;
+  youtubeLink?: string;
   status: MatchStatus;
   roster: string[]; // Array of UIDs
   waitlist: string[]; // Array of UIDs

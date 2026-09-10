@@ -26,6 +26,13 @@ export const AdminMatches: React.FC = () => {
   const [tier2Unlock, setTier2Unlock] = useState('');
   const [tier3Unlock, setTier3Unlock] = useState('');
   const [maxPlayers, setMaxPlayers] = useState(12);
+  const [youtubeLink, setYoutubeLink] = useState('');
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 60000); // Check every minute
+    return () => clearInterval(timer);
+  }, []);
 
   const toLocalFormat = (d: Date) => {
     const local = new Date(d);
@@ -90,6 +97,7 @@ export const AdminMatches: React.FC = () => {
     setEditingId(null);
     setDate('');
     setSelectedVenueId('');
+    setYoutubeLink('');
     setDefaultTimes();
     setMaxPlayers(12);
   };
@@ -98,6 +106,7 @@ export const AdminMatches: React.FC = () => {
     setEditingId(m.id);
     setDate(m.date);
     setTime(m.time);
+    setYoutubeLink(m.youtubeLink || '');
     
     // Find venue by name to set dropdown
     const foundVenue = venues.find(v => v.name === m.venue);
@@ -253,7 +262,8 @@ export const AdminMatches: React.FC = () => {
         tier1UnlockTime: new Date(tier1Unlock).toISOString(),
         tier2UnlockTime: new Date(tier2Unlock).toISOString(),
         tier3UnlockTime: new Date(tier3Unlock).toISOString(),
-        maxPlayers
+        maxPlayers,
+        youtubeLink: youtubeLink.trim()
       };
 
       if (editingId) {
@@ -347,6 +357,12 @@ export const AdminMatches: React.FC = () => {
               )}
             </div>
             
+            <div className="lg:col-span-3">
+              <label className="block text-sm font-medium text-gray-700 mb-1">YouTube Highlights Link (Optional)</label>
+              <input type="url" placeholder="https://youtube.com/watch?v=..." value={youtubeLink} onChange={e => setYoutubeLink(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-emerald-500 focus:border-emerald-500" />
+            </div>
+
             <div className="bg-emerald-50 p-3 rounded-lg border border-emerald-100">
               <label className="block text-sm font-bold text-emerald-800 mb-1">Tier 1 Unlock Time</label>
               <input type="datetime-local" required value={tier1Unlock} onChange={e => setTier1Unlock(e.target.value)}
@@ -390,17 +406,37 @@ export const AdminMatches: React.FC = () => {
                   <p className="text-gray-600 flex items-center gap-1 mt-1 text-sm">
                     <MapPin className="w-4 h-4" /> {match.venue}
                   </p>
+                  {match.youtubeLink && (
+                    <a href={match.youtubeLink} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 mt-2 text-xs font-bold text-red-600 hover:text-red-700 bg-red-50 px-2 py-1 rounded">
+                      ▶ Watch Highlights
+                    </a>
+                  )}
                 </div>
                 
                 <div className="flex flex-wrap items-center gap-3">
                   <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${
                     match.status === 'dormant' ? 'bg-gray-100 text-gray-600' : 
+                    match.status === 'completed' ? 'bg-purple-100 text-purple-700' :
                     match.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'
                   }`}>
                     {match.status}
                   </span>
                   
                   <div className="flex gap-2">
+                    {match.status !== 'completed' && (
+                      <button 
+                        onClick={async () => {
+                          if (window.confirm("Archive this match as Completed? Players will only see it in their History.")) {
+                            await updateDoc(doc(db, 'matches', match.id), { status: 'completed' });
+                          }
+                        }} 
+                        disabled={now < new Date(`${match.date}T${match.time}`).getTime() + 60 * 60 * 1000}
+                        className="p-2 bg-purple-50 hover:bg-purple-100 disabled:opacity-50 disabled:cursor-not-allowed text-purple-700 rounded-lg text-xs font-bold transition" 
+                        title="Mark as Completed (Unlocks 1 hr after kickoff)"
+                      >
+                        Complete
+                      </button>
+                    )}
                     <button onClick={() => handleShare(match)} className="p-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg" title="Share via WhatsApp">
                       <Share2 className="w-4 h-4" />
                     </button>

@@ -1,14 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { Navbar } from '../components/Navbar';
 import { useAuth } from '../context/AuthContext';
-import { collection, query, orderBy, limit, onSnapshot, doc, runTransaction, where, getDocs } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, runTransaction, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import type { Match } from '../types';
 import { Calendar, MapPin, Clock, CheckCircle, AlertCircle, XCircle } from 'lucide-react';
 
 export const PlayerDashboard: React.FC = () => {
   const { userData } = useAuth();
-  const [match, setMatch] = useState<Match | null>(null);
+  const [upcomingMatch, setUpcomingMatch] = useState<Match | null>(null);
+  const [historyMatches, setHistoryMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(Date.now());
   const [teamNames, setTeamNames] = useState<Record<string, string>>({});
@@ -20,24 +21,31 @@ export const PlayerDashboard: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    // Fetch latest match
-    const q = query(collection(db, 'matches'), orderBy('createdAt', 'desc'), limit(1));
+    if (!userData) return;
+    // Fetch all matches
+    const q = query(collection(db, 'matches'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      if (!snapshot.empty) {
-        setMatch({ id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as Match);
-      } else {
-        setMatch(null);
-      }
+      const matches: Match[] = [];
+      snapshot.forEach(doc => matches.push({ id: doc.id, ...doc.data() } as Match));
+      
+      // Filter upcoming match (first one that is not completed or dormant)
+      const upcoming = matches.find(m => m.status !== 'completed' && m.status !== 'dormant') || null;
+      setUpcomingMatch(upcoming);
+
+      // Filter history matches (completed AND user is in roster)
+      const history = matches.filter(m => m.status === 'completed' && m.roster.includes(userData.uid));
+      setHistoryMatches(history);
+      
       setLoading(false);
     });
     return () => unsubscribe();
-  }, []);
+  }, [userData]);
 
-  // Fetch team names if published
+  // Fetch team names if published for upcoming match
   useEffect(() => {
     const fetchNames = async () => {
-      if (match?.status === 'published') {
-        const uids = [...match.teamRed, ...match.teamWhite];
+      if (upcomingMatch?.status === 'published' || upcomingMatch?.status === 'teams_generated') {
+        const uids = [...upcomingMatch.teamRed, ...upcomingMatch.teamWhite];
         if (uids.length > 0) {
           const names: Record<string, string> = {};
           
@@ -67,13 +75,13 @@ export const PlayerDashboard: React.FC = () => {
       }
     };
     fetchNames();
-  }, [match?.status, match?.teamRed, match?.teamWhite]);
+  }, [upcomingMatch?.status, upcomingMatch?.teamRed, upcomingMatch?.teamWhite]);
 
   const handleRSVP = async (intent: 'in' | 'out') => {
-    if (!match || !userData) return;
+    if (!upcomingMatch || !userData) return;
 
-    const matchRef = doc(db, 'matches', match.id);
-    const maxPlayers = match.maxPlayers || 12;
+    const matchRef = doc(db, 'matches', upcomingMatch.id);
+    const maxPlayers = upcomingMatch.maxPlayers || 12;
 
     try {
       await runTransaction(db, async (transaction) => {
@@ -141,224 +149,246 @@ export const PlayerDashboard: React.FC = () => {
     );
   }
 
-  if (!match) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex flex-col">
-        <Navbar />
-        <main className="flex-grow max-w-4xl w-full mx-auto p-4 sm:p-6 lg:p-8">
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-12 text-center text-gray-500">
-            <Calendar className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-            No matches scheduled currently.
+  // Helper to render the Upcoming Match section
+  const renderUpcomingMatch = () => {
+    if (!upcomingMatch) {
+      return (
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-12 text-center text-gray-500 mb-8">
+          <Calendar className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+          No matches scheduled currently.
+        </div>
+      );
+    }
+
+    const isRoster = upcomingMatch.roster.includes(userData!.uid);
+    const isWaitlist = upcomingMatch.waitlist.includes(userData!.uid);
+    
+    // Visibility & Unlock Logic
+    const tier1Time = new Date(upcomingMatch.tier1UnlockTime).getTime();
+    const tier2Time = new Date(upcomingMatch.tier2UnlockTime || (upcomingMatch as any).tier23UnlockTime).getTime(); // Fallback for legacy
+    const tier3Time = new Date(upcomingMatch.tier3UnlockTime || (upcomingMatch as any).tier23UnlockTime).getTime();
+    
+    let isUnlocked = false;
+    
+    if (userData?.tier === 1) {
+      isUnlocked = now >= tier1Time;
+    } else if (userData?.tier === 2) {
+      isUnlocked = now >= tier2Time;
+    } else {
+      isUnlocked = now >= tier3Time;
+    }
+
+    const maxPlayers = upcomingMatch.maxPlayers || 12;
+
+    if (!isUnlocked && !isRoster && !isWaitlist) {
+      return (
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-12 text-center text-gray-500 mb-8">
+          <Calendar className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+          No matches available for your tier yet.
+        </div>
+      );
+    }
+
+    // --- Published Match Card UI ---
+    if (upcomingMatch.status === 'published') {
+      return (
+        <div className="bg-white rounded-2xl shadow-xl overflow-hidden mb-8 border border-gray-200">
+          {/* Header */}
+          <div className="bg-gradient-to-r from-emerald-800 to-emerald-600 text-white p-8 text-center relative">
+            <h2 className="text-4xl font-black mb-2 tracking-tight uppercase">Match Day</h2>
+            <div className="flex items-center justify-center gap-2 text-emerald-100 text-lg font-medium">
+              <Calendar className="w-5 h-5" />
+              <span>{new Date(upcomingMatch.date).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</span>
+            </div>
+            <div className="flex items-center justify-center gap-2 text-white mt-2 font-black text-2xl">
+              <Clock className="w-6 h-6" />
+              <span>{upcomingMatch.time} Kickoff</span>
+            </div>
           </div>
-        </main>
-      </div>
-    );
-  }
 
-  const isRoster = match.roster.includes(userData!.uid);
-  const isWaitlist = match.waitlist.includes(userData!.uid);
-  
-  // Visibility & Unlock Logic
-  const tier1Time = new Date(match.tier1UnlockTime).getTime();
-  const tier2Time = new Date(match.tier2UnlockTime || (match as any).tier23UnlockTime).getTime(); // Fallback for legacy
-  const tier3Time = new Date(match.tier3UnlockTime || (match as any).tier23UnlockTime).getTime();
-  
-  let isUnlocked = false;
-  
-  if (userData?.tier === 1) {
-    isUnlocked = now >= tier1Time;
-  } else if (userData?.tier === 2) {
-    isUnlocked = now >= tier2Time;
-  } else {
-    isUnlocked = now >= tier3Time;
-  }
-
-  const maxPlayers = match.maxPlayers || 12;
-
-  // Requirement: Do not show the match to players if it has not opened for their tier,
-  // EXCEPT if they are already in the match somehow (e.g. they were added or times changed).
-  if (!isUnlocked && !isRoster && !isWaitlist) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex flex-col">
-        <Navbar />
-        <main className="flex-grow max-w-4xl w-full mx-auto p-4 sm:p-6 lg:p-8">
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-12 text-center text-gray-500">
-            <Calendar className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-            No matches scheduled currently.
+          {/* Venue */}
+          <div className="bg-gray-50 border-b border-gray-200 p-4 flex justify-center">
+            <a 
+              href={upcomingMatch.mapsLink} target="_blank" rel="noreferrer"
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-white hover:bg-gray-50 transition border border-gray-200 shadow-sm"
+            >
+              <MapPin className="w-5 h-5 text-emerald-600" />
+              <span className="font-bold text-gray-800">{upcomingMatch.venue}</span>
+            </a>
           </div>
-        </main>
-      </div>
-    );
-  }
 
-  // --- Published Match Card UI ---
-  if (match.status === 'published') {
-    return (
-      <div className="min-h-screen bg-gray-900 flex flex-col">
-        <Navbar />
-        <main className="flex-grow max-w-4xl w-full mx-auto p-4 sm:p-6">
-          <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
-            {/* Header */}
-            <div className="bg-gradient-to-r from-emerald-800 to-emerald-600 text-white p-8 text-center relative">
-              <h2 className="text-4xl font-black mb-2 tracking-tight uppercase">Match Day</h2>
-              <div className="flex items-center justify-center gap-2 text-emerald-100 text-lg font-medium">
-                <Calendar className="w-5 h-5" />
-                <span>{new Date(match.date).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</span>
-              </div>
-              <div className="flex items-center justify-center gap-2 text-white mt-2 font-black text-2xl">
-                <Clock className="w-6 h-6" />
-                <span>{match.time} Kickoff</span>
+          {/* Teams */}
+          <div className="grid grid-cols-1 md:grid-cols-2">
+            {/* Team Red */}
+            <div className="p-6 md:border-r border-gray-200 bg-red-50">
+              <h3 className="text-2xl font-black text-red-800 text-center mb-6 uppercase tracking-wider flex items-center justify-center gap-2">
+                <span className="w-4 h-4 rounded-full bg-red-600 block"></span> Team Red
+              </h3>
+              <div className="space-y-3">
+                {upcomingMatch.teamRed.map((uid, i) => (
+                  <div key={i} className="flex justify-between items-center bg-white p-3 rounded-lg border border-red-100 shadow-sm">
+                    <span className="font-bold text-gray-900">{uid === userData?.uid ? <span className="text-emerald-600 font-black">{userData.name} (You)</span> : (teamNames[uid] || 'Loading...')}</span>
+                  </div>
+                ))}
               </div>
             </div>
 
-            {/* Venue */}
-            <div className="bg-gray-50 border-b border-gray-200 p-4 flex justify-center">
-              <a 
-                href={match.mapsLink} target="_blank" rel="noreferrer"
-                className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-white hover:bg-gray-50 transition border border-gray-200 shadow-sm"
+            {/* Team White */}
+            <div className="p-6 bg-slate-50">
+              <h3 className="text-2xl font-black text-slate-700 text-center mb-6 uppercase tracking-wider flex items-center justify-center gap-2">
+                <span className="w-4 h-4 rounded-full bg-white border-2 border-slate-300 block"></span> Team White
+              </h3>
+              <div className="space-y-3">
+                {upcomingMatch.teamWhite.map((uid, i) => (
+                  <div key={i} className="flex justify-between items-center bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
+                    <span className="font-bold text-gray-900">{uid === userData?.uid ? <span className="text-emerald-600 font-black">{userData.name} (You)</span> : (teamNames[uid] || 'Loading...')}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mb-8 max-w-md mx-auto">
+        {/* Header */}
+        <div className="bg-emerald-700 text-white p-6 text-center">
+          <h2 className="text-2xl font-black mb-1">Next Match</h2>
+          <div className="flex items-center justify-center gap-2 text-emerald-100">
+            <Calendar className="w-4 h-4" />
+            <span>{new Date(upcomingMatch.date).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</span>
+          </div>
+          <div className="flex items-center justify-center gap-2 text-emerald-100 mt-1 font-bold text-lg">
+            <Clock className="w-4 h-4" />
+            <span>{upcomingMatch.time} Kickoff</span>
+          </div>
+        </div>
+
+        <div className="p-6">
+          <a 
+            href={upcomingMatch.mapsLink} target="_blank" rel="noreferrer"
+            className="flex items-start gap-3 p-3 rounded-xl bg-gray-50 hover:bg-gray-100 transition border border-gray-200 mb-6"
+          >
+            <MapPin className="w-6 h-6 text-emerald-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold text-gray-900 leading-tight">{upcomingMatch.venue}</p>
+              <p className="text-sm text-gray-500 mt-1">Tap to open in Google Maps</p>
+            </div>
+          </a>
+
+          {/* Status Section */}
+          <div className="mb-6">
+            <div className="flex justify-between items-center mb-2">
+              <h3 className="font-bold text-gray-700 uppercase tracking-wider text-xs">Roster Status</h3>
+              <span className="font-black text-lg text-emerald-600">{upcomingMatch.roster.length} <span className="text-gray-400 text-sm font-medium">/ {maxPlayers}</span></span>
+            </div>
+            
+            <div className="w-full bg-gray-100 rounded-full h-3 mb-2 overflow-hidden flex">
+              <div className="bg-emerald-500 h-3" style={{ width: `${Math.min((upcomingMatch.roster.length / maxPlayers) * 100, 100)}%` }}></div>
+            </div>
+            {upcomingMatch.waitlist.length > 0 && (
+              <p className="text-xs text-amber-600 font-bold text-right">{upcomingMatch.waitlist.length} on waitlist</p>
+            )}
+          </div>
+
+          <hr className="my-6 border-gray-100" />
+
+          {/* Action Area */}
+          {isRoster ? (
+            <div className="text-center">
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-emerald-100 mb-4">
+                <CheckCircle className="w-8 h-8 text-emerald-600" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 mb-1">You're In!</h3>
+              <p className="text-gray-500 mb-6">See you on the pitch.</p>
+              <button 
+                onClick={() => handleRSVP('out')}
+                className="w-full bg-red-50 hover:bg-red-100 text-red-600 font-bold py-3 px-4 rounded-xl transition border border-red-200"
               >
-                <MapPin className="w-5 h-5 text-emerald-600" />
-                <span className="font-bold text-gray-800">{match.venue}</span>
-              </a>
+                Drop Out
+              </button>
             </div>
-
-            {/* Teams */}
-            <div className="grid grid-cols-1 md:grid-cols-2">
-              {/* Team Red */}
-              <div className="p-6 md:border-r border-gray-200 bg-red-50">
-                <h3 className="text-2xl font-black text-red-800 text-center mb-6 uppercase tracking-wider flex items-center justify-center gap-2">
-                  <span className="w-4 h-4 rounded-full bg-red-600 block"></span> Team Red
-                </h3>
-                <div className="space-y-3">
-                  {match.teamRed.map((uid, i) => (
-                    <div key={i} className="flex justify-between items-center bg-white p-3 rounded-lg border border-red-100 shadow-sm">
-                      <span className="font-bold text-gray-900">{uid === userData?.uid ? <span className="text-emerald-600 font-black">{userData.name} (You)</span> : (teamNames[uid] || 'Loading...')}</span>
-                    </div>
-                  ))}
-                </div>
+          ) : isWaitlist ? (
+            <div className="text-center">
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-amber-100 mb-4">
+                <AlertCircle className="w-8 h-8 text-amber-600" />
               </div>
-
-              {/* Team White */}
-              <div className="p-6 bg-slate-50">
-                <h3 className="text-2xl font-black text-slate-700 text-center mb-6 uppercase tracking-wider flex items-center justify-center gap-2">
-                  <span className="w-4 h-4 rounded-full bg-white border-2 border-slate-300 block"></span> Team White
-                </h3>
-                <div className="space-y-3">
-                  {match.teamWhite.map((uid, i) => (
-                    <div key={i} className="flex justify-between items-center bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
-                      <span className="font-bold text-gray-900">{uid === userData?.uid ? <span className="text-emerald-600 font-black">{userData.name} (You)</span> : (teamNames[uid] || 'Loading...')}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <h3 className="text-xl font-bold text-gray-900 mb-1">You're on the Waitlist</h3>
+              <p className="text-gray-500 mb-6">Position: #{upcomingMatch.waitlist.indexOf(userData!.uid) + 1}</p>
+              <button 
+                onClick={() => handleRSVP('out')}
+                className="w-full bg-red-50 hover:bg-red-100 text-red-600 font-bold py-3 px-4 rounded-xl transition border border-red-200"
+              >
+                Leave Waitlist
+              </button>
             </div>
-          </div>
-        </main>
+          ) : (
+            <div className="space-y-3">
+              {upcomingMatch.roster.length < maxPlayers ? (
+                <button 
+                  onClick={() => handleRSVP('in')}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 px-4 rounded-xl shadow-lg transition flex justify-center items-center gap-2 text-lg"
+                >
+                  <CheckCircle className="w-6 h-6" /> I'm In
+                </button>
+              ) : (
+                <button 
+                  onClick={() => handleRSVP('in')}
+                  className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-4 px-4 rounded-xl shadow-lg transition flex justify-center items-center gap-2 text-lg"
+                >
+                  <AlertCircle className="w-6 h-6" /> Join Waitlist
+                </button>
+              )}
+              <button className="w-full bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold py-3 px-4 rounded-xl transition flex justify-center items-center gap-2">
+                <XCircle className="w-5 h-5" /> Can't Make It
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     );
-  }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <Navbar />
       
-      <main className="flex-grow max-w-md w-full mx-auto p-4 sm:p-6">
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-          {/* Header */}
-          <div className="bg-emerald-700 text-white p-6 text-center">
-            <h2 className="text-2xl font-black mb-1">Next Match</h2>
-            <div className="flex items-center justify-center gap-2 text-emerald-100">
-              <Calendar className="w-4 h-4" />
-              <span>{new Date(match.date).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</span>
-            </div>
-            <div className="flex items-center justify-center gap-2 text-emerald-100 mt-1 font-bold text-lg">
-              <Clock className="w-4 h-4" />
-              <span>{match.time} Kickoff</span>
+      <main className="flex-grow max-w-4xl w-full mx-auto p-4 sm:p-6 lg:p-8">
+        {renderUpcomingMatch()}
+
+        {/* History Section */}
+        {historyMatches.length > 0 && (
+          <div className="mt-12">
+            <h2 className="text-2xl font-black text-gray-900 mb-6 tracking-tight">Your Match History</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {historyMatches.map(m => (
+                <div key={m.id} className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between">
+                  <div>
+                    <h3 className="font-bold text-gray-900 text-lg flex items-center gap-2">
+                      <Calendar className="w-5 h-5 text-gray-400" />
+                      {new Date(m.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </h3>
+                    <p className="text-gray-500 text-sm mt-1 flex items-center gap-1">
+                      <MapPin className="w-4 h-4" /> {m.venue}
+                    </p>
+                  </div>
+                  {m.youtubeLink && (
+                    <a 
+                      href={m.youtubeLink} 
+                      target="_blank" 
+                      rel="noreferrer"
+                      className="mt-4 bg-red-50 hover:bg-red-100 text-red-600 font-bold py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition"
+                    >
+                      ▶ Watch Highlights
+                    </a>
+                  )}
+                </div>
+              ))}
             </div>
           </div>
-
-          <div className="p-6">
-            <a 
-              href={match.mapsLink} target="_blank" rel="noreferrer"
-              className="flex items-start gap-3 p-3 rounded-xl bg-gray-50 hover:bg-gray-100 transition border border-gray-200 mb-6"
-            >
-              <MapPin className="w-6 h-6 text-emerald-600 shrink-0 mt-0.5" />
-              <div>
-                <p className="font-bold text-gray-900 leading-tight">{match.venue}</p>
-                <p className="text-sm text-gray-500 mt-1">Tap to open in Google Maps</p>
-              </div>
-            </a>
-
-            {/* Status Section */}
-            <div className="mb-6">
-              <div className="flex justify-between items-center mb-2">
-                <h3 className="font-bold text-gray-700 uppercase tracking-wider text-xs">Roster Status</h3>
-                <span className="font-black text-lg text-emerald-600">{match.roster.length} <span className="text-gray-400 text-sm font-medium">/ {maxPlayers}</span></span>
-              </div>
-              
-              <div className="w-full bg-gray-100 rounded-full h-3 mb-2 overflow-hidden flex">
-                <div className="bg-emerald-500 h-3" style={{ width: `${Math.min((match.roster.length / maxPlayers) * 100, 100)}%` }}></div>
-              </div>
-              {match.waitlist.length > 0 && (
-                <p className="text-xs text-amber-600 font-bold text-right">{match.waitlist.length} on waitlist</p>
-              )}
-            </div>
-
-            <hr className="my-6 border-gray-100" />
-
-            {/* Action Area */}
-            {isRoster ? (
-              <div className="text-center">
-                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-emerald-100 mb-4">
-                  <CheckCircle className="w-8 h-8 text-emerald-600" />
-                </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-1">You're In!</h3>
-                <p className="text-gray-500 mb-6">See you on the pitch.</p>
-                <button 
-                  onClick={() => handleRSVP('out')}
-                  className="w-full bg-red-50 hover:bg-red-100 text-red-600 font-bold py-3 px-4 rounded-xl transition border border-red-200"
-                >
-                  Drop Out
-                </button>
-              </div>
-            ) : isWaitlist ? (
-              <div className="text-center">
-                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-amber-100 mb-4">
-                  <AlertCircle className="w-8 h-8 text-amber-600" />
-                </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-1">You're on the Waitlist</h3>
-                <p className="text-gray-500 mb-6">Position: #{match.waitlist.indexOf(userData!.uid) + 1}</p>
-                <button 
-                  onClick={() => handleRSVP('out')}
-                  className="w-full bg-red-50 hover:bg-red-100 text-red-600 font-bold py-3 px-4 rounded-xl transition border border-red-200"
-                >
-                  Leave Waitlist
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {match.roster.length < maxPlayers ? (
-                  <button 
-                    onClick={() => handleRSVP('in')}
-                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 px-4 rounded-xl shadow-lg transition flex justify-center items-center gap-2 text-lg"
-                  >
-                    <CheckCircle className="w-6 h-6" /> I'm In
-                  </button>
-                ) : (
-                  <button 
-                    onClick={() => handleRSVP('in')}
-                    className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-4 px-4 rounded-xl shadow-lg transition flex justify-center items-center gap-2 text-lg"
-                  >
-                    <AlertCircle className="w-6 h-6" /> Join Waitlist
-                  </button>
-                )}
-                <button className="w-full bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold py-3 px-4 rounded-xl transition flex justify-center items-center gap-2">
-                  <XCircle className="w-5 h-5" /> Can't Make It
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
+        )}
       </main>
     </div>
   );

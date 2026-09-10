@@ -94,6 +94,12 @@ export const ManageMatch: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [guestName, setGuestName] = useState('');
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 10000);
+    return () => clearInterval(timer);
+  }, []);
 
   const handleAddGuest = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -390,10 +396,25 @@ export const ManageMatch: React.FC = () => {
     }
   };
 
+  const handleCloseTierNow = async (tier: 2 | 3) => {
+    if (!matchId) return;
+    try {
+      const field = tier === 2 ? 'tier2UnlockTime' : 'tier3UnlockTime';
+      const futureDate = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
+      await updateDoc(doc(db, 'matches', matchId), { [field]: futureDate });
+    } catch (err) {
+      console.error(err);
+      alert(`Failed to close for Tier ${tier}.`);
+    }
+  };
+
   if (!match) return <div className="p-8 text-center">Loading match...</div>;
 
   const activeUser = activeId ? players[activeId] : null;
   const isPublished = match.status === 'published';
+
+  const isTier2Open = now >= new Date(match.tier2UnlockTime || (match as any).tier23UnlockTime).getTime();
+  const isTier3Open = now >= new Date(match.tier3UnlockTime || (match as any).tier23UnlockTime).getTime();
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -406,12 +427,25 @@ export const ManageMatch: React.FC = () => {
           </button>
           
           <div className="flex gap-2 flex-wrap justify-end w-full sm:w-auto">
-            <button onClick={() => handleOpenTierNow(2)} className="bg-blue-100 hover:bg-blue-200 text-blue-800 px-3 py-1.5 rounded text-sm font-bold flex items-center gap-1 transition">
-              <Clock className="w-4 h-4" /> Open Tier 2
-            </button>
-            <button onClick={() => handleOpenTierNow(3)} className="bg-amber-100 hover:bg-amber-200 text-amber-800 px-3 py-1.5 rounded text-sm font-bold flex items-center gap-1 transition">
-              <Clock className="w-4 h-4" /> Open Tier 3
-            </button>
+            {isTier2Open ? (
+              <button onClick={() => handleCloseTierNow(2)} className="bg-red-100 hover:bg-red-200 text-red-800 px-3 py-1.5 rounded text-sm font-bold flex items-center gap-1 transition">
+                <X className="w-4 h-4" /> Close Tier 2
+              </button>
+            ) : (
+              <button onClick={() => handleOpenTierNow(2)} className="bg-blue-100 hover:bg-blue-200 text-blue-800 px-3 py-1.5 rounded text-sm font-bold flex items-center gap-1 transition">
+                <Clock className="w-4 h-4" /> Open Tier 2
+              </button>
+            )}
+            
+            {isTier3Open ? (
+              <button onClick={() => handleCloseTierNow(3)} className="bg-red-100 hover:bg-red-200 text-red-800 px-3 py-1.5 rounded text-sm font-bold flex items-center gap-1 transition">
+                <X className="w-4 h-4" /> Close Tier 3
+              </button>
+            ) : (
+              <button onClick={() => handleOpenTierNow(3)} className="bg-amber-100 hover:bg-amber-200 text-amber-800 px-3 py-1.5 rounded text-sm font-bold flex items-center gap-1 transition">
+                <Clock className="w-4 h-4" /> Open Tier 3
+              </button>
+            )}
           </div>
 
           <div className="flex gap-2 w-full sm:w-auto">
