@@ -152,7 +152,7 @@ export const ManageMatch: React.FC = () => {
               createdAt: Date.now(),
               role: 'player',
               tier: 2,
-              preferredPos: 'ANY',
+              preferredPos: 'MID',
               attackRating: 5,
               defRating: 5,
             } as AppUser;
