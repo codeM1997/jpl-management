@@ -147,6 +147,9 @@ export const ManageMatch: React.FC = () => {
             userMap[uid] = {
               uid: uid,
               name: guestName + ' (Guest)',
+              email: 'guest@temp.com',
+              phone: 'N/A',
+              createdAt: Date.now(),
               role: 'player',
               tier: 2,
               preferredPos: 'ANY',
