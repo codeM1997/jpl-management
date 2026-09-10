@@ -288,8 +288,8 @@ export const AdminMatches: React.FC = () => {
           <p className="text-gray-500 text-center py-8">No matches created yet.</p>
         ) : (
           matches.map(match => (
-            <div key={match.id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 group relative">
-              <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition">
+            <div key={match.id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 relative">
+              <div className="absolute top-4 right-4 flex gap-2">
                 <button onClick={() => handleShare(match)} className="p-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg" title="Share via WhatsApp">
                   <Share2 className="w-4 h-4" />
                 </button>

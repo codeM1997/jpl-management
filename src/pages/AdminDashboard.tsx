@@ -261,7 +261,7 @@ export const AdminDashboard: React.FC = () => {
         )}
 
         {activeTab === 'players' && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
             {approvedUsers.length === 0 ? (
               <div className="p-12 text-center text-gray-500">
                 No approved players yet.
