@@ -7,7 +7,7 @@ import { Navbar } from '../components/Navbar';
 import { DndContext, pointerWithin, KeyboardSensor, PointerSensor, useSensor, useSensors, DragOverlay, type DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ArrowLeft, Users, Shield, Save, X, Clock, PlusCircle } from 'lucide-react';
+import { ArrowLeft, Users, Shield, Save, X, PlusCircle } from 'lucide-react';
 
 // --- Sortable Player Item Component ---
 interface SortablePlayerProps {
@@ -111,12 +111,7 @@ export const ManageMatch: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [guestName, setGuestName] = useState('');
-  const [now, setNow] = useState(Date.now());
 
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 10000);
-    return () => clearInterval(timer);
-  }, []);
 
   const handleAddGuest = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -347,7 +342,16 @@ export const ManageMatch: React.FC = () => {
   };
 
   const handlePublish = async () => {
-    if (!matchId) return;
+    if (!matchId || !match) return;
+    
+    if (match.status !== 'published') {
+      const maxPlayers = match.maxPlayers || 12;
+      if (match.roster.length < maxPlayers) {
+        alert(`You cannot publish the match until the roster is full (${match.roster.length}/${maxPlayers} players).`);
+        return;
+      }
+    }
+
     if (unassigned.length > 0) {
       if (!window.confirm("There are still players in the Roster Pool. Are you sure you want to publish the match?")) {
         return;
@@ -358,9 +362,9 @@ export const ManageMatch: React.FC = () => {
       await updateDoc(doc(db, 'matches', matchId), {
         teamRed,
         teamWhite,
-        status: match?.status === 'published' ? 'teams_generated' : 'published'
+        status: match.status === 'published' ? 'teams_generated' : 'published'
       });
-      alert(match?.status === 'published' ? 'Match unpublished (returned to draft).' : 'Match Published! Players can now see the teams.');
+      alert(match.status === 'published' ? 'Match unpublished (returned to draft).' : 'Match Published! Players can now see the teams.');
     } catch (err) {
       console.error(err);
       alert('Failed to publish match.');
@@ -402,29 +406,6 @@ export const ManageMatch: React.FC = () => {
     }
   };
 
-  const handleOpenTierNow = async (tier: 2 | 3) => {
-    if (!matchId) return;
-    try {
-      const field = tier === 2 ? 'tier2UnlockTime' : 'tier3UnlockTime';
-      await updateDoc(doc(db, 'matches', matchId), { [field]: new Date().toISOString() });
-    } catch (err) {
-      console.error(err);
-      alert(`Failed to open for Tier ${tier}.`);
-    }
-  };
-
-  const handleCloseTierNow = async (tier: 2 | 3) => {
-    if (!matchId) return;
-    try {
-      const field = tier === 2 ? 'tier2UnlockTime' : 'tier3UnlockTime';
-      const futureDate = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
-      await updateDoc(doc(db, 'matches', matchId), { [field]: futureDate });
-    } catch (err) {
-      console.error(err);
-      alert(`Failed to close for Tier ${tier}.`);
-    }
-  };
-
   const handleTogglePaid = async (uid: string) => {
     if (!match || !matchId) return;
     try {
@@ -447,9 +428,8 @@ export const ManageMatch: React.FC = () => {
   const activeUser = activeId ? players[activeId] : null;
   const isLocked = match.status === 'published' || match.status === 'completed';
   const isPublished = match.status === 'published';
-
-  const isTier2Open = now >= new Date(match.tier2UnlockTime || (match as any).tier23UnlockTime).getTime();
-  const isTier3Open = now >= new Date(match.tier3UnlockTime || (match as any).tier23UnlockTime).getTime();
+  const maxPlayers = match.maxPlayers || 12;
+  const canPublish = match.roster.length >= maxPlayers;
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -461,28 +441,6 @@ export const ManageMatch: React.FC = () => {
             <ArrowLeft className="w-5 h-5 mr-1" /> Back to Dashboard
           </button>
           
-          <div className="flex gap-2 flex-wrap justify-end w-full sm:w-auto">
-            {isTier2Open ? (
-              <button onClick={() => handleCloseTierNow(2)} className="bg-red-100 hover:bg-red-200 text-red-800 px-3 py-1.5 rounded text-sm font-bold flex items-center gap-1 transition">
-                <X className="w-4 h-4" /> Close Tier 2
-              </button>
-            ) : (
-              <button onClick={() => handleOpenTierNow(2)} className="bg-blue-100 hover:bg-blue-200 text-blue-800 px-3 py-1.5 rounded text-sm font-bold flex items-center gap-1 transition">
-                <Clock className="w-4 h-4" /> Open Tier 2
-              </button>
-            )}
-            
-            {isTier3Open ? (
-              <button onClick={() => handleCloseTierNow(3)} className="bg-red-100 hover:bg-red-200 text-red-800 px-3 py-1.5 rounded text-sm font-bold flex items-center gap-1 transition">
-                <X className="w-4 h-4" /> Close Tier 3
-              </button>
-            ) : (
-              <button onClick={() => handleOpenTierNow(3)} className="bg-amber-100 hover:bg-amber-200 text-amber-800 px-3 py-1.5 rounded text-sm font-bold flex items-center gap-1 transition">
-                <Clock className="w-4 h-4" /> Open Tier 3
-              </button>
-            )}
-          </div>
-
           <div className="flex gap-2 w-full sm:w-auto">
             <button 
               onClick={handleReset} 
@@ -500,8 +458,9 @@ export const ManageMatch: React.FC = () => {
             </button>
             <button 
               onClick={handlePublish} 
-              disabled={saving || match.status === 'completed'}
+              disabled={saving || match.status === 'completed' || (!isPublished && !canPublish)}
               className={`flex-1 sm:flex-none px-4 py-2 rounded-lg font-bold flex items-center justify-center gap-2 shadow-sm transition disabled:opacity-50 ${isPublished ? 'bg-amber-500 hover:bg-amber-600 text-white' : 'bg-indigo-600 hover:bg-indigo-700 text-white'}`}
+              title={!isPublished && !canPublish ? 'Roster must be full to publish' : ''}
             >
               {isPublished ? 'Unpublish' : 'Publish Match'}
             </button>

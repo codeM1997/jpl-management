@@ -207,6 +207,27 @@ export const AdminMatches: React.FC = () => {
     }
   };
 
+  const handleOpenTierNow = async (matchId: string, tier: 2 | 3) => {
+    try {
+      const field = tier === 2 ? 'tier2UnlockTime' : 'tier3UnlockTime';
+      await updateDoc(doc(db, 'matches', matchId), { [field]: new Date().toISOString() });
+    } catch (err) {
+      console.error(err);
+      alert(`Failed to open for Tier ${tier}.`);
+    }
+  };
+
+  const handleCloseTierNow = async (matchId: string, tier: 2 | 3) => {
+    try {
+      const field = tier === 2 ? 'tier2UnlockTime' : 'tier3UnlockTime';
+      const futureDate = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
+      await updateDoc(doc(db, 'matches', matchId), { [field]: futureDate });
+    } catch (err) {
+      console.error(err);
+      alert(`Failed to close for Tier ${tier}.`);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -395,7 +416,12 @@ export const AdminMatches: React.FC = () => {
         {matches.length === 0 ? (
           <p className="text-gray-500 text-center py-8">No matches created yet.</p>
         ) : (
-          matches.map(match => (
+          matches.map(match => {
+            const isTier2Open = now >= new Date(match.tier2UnlockTime || (match as any).tier23UnlockTime).getTime();
+            const isTier3Open = now >= new Date(match.tier3UnlockTime || (match as any).tier23UnlockTime).getTime();
+            const isCompleted = match.status === 'completed';
+
+            return (
             <div key={match.id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 relative">
               <div className="flex flex-col md:flex-row justify-between items-start mb-4 gap-4">
                 <div>
@@ -423,7 +449,7 @@ export const AdminMatches: React.FC = () => {
                   </span>
                   
                   <div className="flex gap-2">
-                    {match.status !== 'completed' && (
+                    {!isCompleted && (
                       <button 
                         onClick={async () => {
                           if (window.confirm("Archive this match as Completed? Players will only see it in their History.")) {
@@ -456,11 +482,37 @@ export const AdminMatches: React.FC = () => {
                   <span className="font-semibold">{new Date(match.tier1UnlockTime).toLocaleString()}</span>
                 </div>
                 <div>
-                  <span className="text-gray-500 flex items-center gap-1"><Clock className="w-3 h-3" /> Tier 2</span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500 flex items-center gap-1"><Clock className="w-3 h-3" /> Tier 2</span>
+                    {!isCompleted && (
+                      isTier2Open ? (
+                        <button onClick={() => handleCloseTierNow(match.id, 2)} className="bg-red-100 hover:bg-red-200 text-red-800 px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 transition">
+                          <X className="w-3 h-3" /> Close
+                        </button>
+                      ) : (
+                        <button onClick={() => handleOpenTierNow(match.id, 2)} className="bg-blue-100 hover:bg-blue-200 text-blue-800 px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 transition">
+                          <Clock className="w-3 h-3" /> Open
+                        </button>
+                      )
+                    )}
+                  </div>
                   <span className="font-semibold">{match.tier2UnlockTime ? new Date(match.tier2UnlockTime).toLocaleString() : new Date((match as any).tier23UnlockTime).toLocaleString()}</span>
                 </div>
                 <div>
-                  <span className="text-gray-500 flex items-center gap-1"><Clock className="w-3 h-3" /> Tier 3</span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500 flex items-center gap-1"><Clock className="w-3 h-3" /> Tier 3</span>
+                    {!isCompleted && (
+                      isTier3Open ? (
+                        <button onClick={() => handleCloseTierNow(match.id, 3)} className="bg-red-100 hover:bg-red-200 text-red-800 px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 transition">
+                          <X className="w-3 h-3" /> Close
+                        </button>
+                      ) : (
+                        <button onClick={() => handleOpenTierNow(match.id, 3)} className="bg-amber-100 hover:bg-amber-200 text-amber-800 px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 transition">
+                          <Clock className="w-3 h-3" /> Open
+                        </button>
+                      )
+                    )}
+                  </div>
                   <span className="font-semibold">{match.tier3UnlockTime ? new Date(match.tier3UnlockTime).toLocaleString() : new Date((match as any).tier23UnlockTime).toLocaleString()}</span>
                 </div>
               </div>
@@ -478,7 +530,8 @@ export const AdminMatches: React.FC = () => {
                 </Link>
               </div>
             </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>
