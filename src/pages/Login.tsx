@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import { PinInput } from '../components/PinInput';
@@ -10,12 +10,14 @@ export const Login: React.FC = () => {
   const [identifier, setIdentifier] = useState('');
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setMessage('');
     
     if (pin.length !== 6) {
       setError('Please enter a valid 6-digit PIN.');
@@ -34,7 +36,6 @@ export const Login: React.FC = () => {
       // If it looks like a phone number (no @ symbol), look up the email
       if (!loginEmail.includes('@')) {
         const usersRef = collection(db, 'users');
-        // Simple query to find the user by phone number
         const q = query(usersRef, where('phone', '==', loginEmail));
         const querySnapshot = await getDocs(q);
         
@@ -42,14 +43,10 @@ export const Login: React.FC = () => {
           throw new Error('No account found with this phone number. Please sign up first.');
         }
         
-        // Grab the first matched user's email
         loginEmail = querySnapshot.docs[0].data().email;
       }
 
-      // We use the 6-digit PIN directly as the password
       await signInWithEmailAndPassword(auth, loginEmail, pin);
-      
-      // Navigate to root, ProtectedRoute will redirect them based on role
       navigate('/');
       
     } catch (err: any) {
@@ -59,6 +56,41 @@ export const Login: React.FC = () => {
       } else {
         setError(err.message || 'Failed to sign in.');
       }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleForgotPin = async () => {
+    setError('');
+    setMessage('');
+    
+    if (!identifier.trim()) {
+      setError('Please enter your email or phone number first to reset your PIN.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      let resetEmail = identifier.trim();
+
+      // If phone number, find the email
+      if (!resetEmail.includes('@')) {
+        const usersRef = collection(db, 'users');
+        const q = query(usersRef, where('phone', '==', resetEmail));
+        const querySnapshot = await getDocs(q);
+        
+        if (querySnapshot.empty) {
+          throw new Error('No account found with this phone number.');
+        }
+        resetEmail = querySnapshot.docs[0].data().email;
+      }
+
+      await sendPasswordResetEmail(auth, resetEmail);
+      setMessage(`A PIN reset link has been sent to ${resetEmail}! Check your inbox.`);
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || 'Failed to send reset email.');
     } finally {
       setLoading(false);
     }
@@ -81,6 +113,11 @@ export const Login: React.FC = () => {
                 {error}
               </div>
             )}
+            {message && (
+              <div className="bg-emerald-50 text-emerald-700 p-3 rounded-md text-sm text-center font-medium">
+                {message}
+              </div>
+            )}
 
             <div>
               <label htmlFor="identifier" className="block text-sm font-medium text-gray-700">
@@ -101,7 +138,19 @@ export const Login: React.FC = () => {
             </div>
 
             <div className="pt-2">
-              <PinInput value={pin} onChange={setPin} label="Enter your 6-digit PIN" />
+              <div className="flex justify-between items-center mb-1">
+                <label className="block text-sm font-medium text-gray-700">
+                  Enter your 6-digit PIN
+                </label>
+                <button
+                  type="button"
+                  onClick={handleForgotPin}
+                  className="text-sm font-medium text-emerald-600 hover:text-emerald-500 focus:outline-none"
+                >
+                  Forgot PIN?
+                </button>
+              </div>
+              <PinInput value={pin} onChange={setPin} label="" />
             </div>
 
             <div>
@@ -110,7 +159,7 @@ export const Login: React.FC = () => {
                 disabled={loading}
                 className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {loading ? 'Signing in...' : (
+                {loading ? 'Processing...' : (
                   <>
                     <LogIn className="w-5 h-5 mr-2" />
                     Sign in
