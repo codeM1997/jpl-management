@@ -11,12 +11,17 @@ export const AdminMatches: React.FC = () => {
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(false);
   
+  // Venues State
+  const [venues, setVenues] = useState<{id: string, name: string, mapsLink: string}[]>([]);
+  const [selectedVenueId, setSelectedVenueId] = useState('');
+  const [isAddingVenue, setIsAddingVenue] = useState(false);
+  const [newVenueName, setNewVenueName] = useState('');
+  const [newVenueLink, setNewVenueLink] = useState('');
+
   // Form State
   const [editingId, setEditingId] = useState<string | null>(null);
   const [date, setDate] = useState('');
   const [time, setTime] = useState('19:00');
-  const [venue, setVenue] = useState('');
-  const [mapsLink, setMapsLink] = useState('');
   const [tier1Unlock, setTier1Unlock] = useState('');
   const [tier2Unlock, setTier2Unlock] = useState('');
   const [tier3Unlock, setTier3Unlock] = useState('');
@@ -41,22 +46,50 @@ export const AdminMatches: React.FC = () => {
 
   useEffect(() => {
     setDefaultTimes();
-    const q = query(collection(db, 'matches'), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    
+    // Fetch matches
+    const qMatches = query(collection(db, 'matches'), orderBy('createdAt', 'desc'));
+    const unsubscribeMatches = onSnapshot(qMatches, (snapshot) => {
       const fetchedMatches: Match[] = [];
-      snapshot.forEach(d => {
-        fetchedMatches.push({ id: d.id, ...d.data() } as Match);
-      });
+      snapshot.forEach(d => fetchedMatches.push({ id: d.id, ...d.data() } as Match));
       setMatches(fetchedMatches);
     });
-    return () => unsubscribe();
+
+    // Fetch venues
+    const qVenues = query(collection(db, 'venues'), orderBy('name', 'asc'));
+    const unsubscribeVenues = onSnapshot(qVenues, (snapshot) => {
+      const fetchedVenues: any[] = [];
+      snapshot.forEach(d => fetchedVenues.push({ id: d.id, ...d.data() }));
+      setVenues(fetchedVenues);
+    });
+
+    return () => {
+      unsubscribeMatches();
+      unsubscribeVenues();
+    };
   }, []);
+
+  const handleSaveNewVenue = async () => {
+    if (!newVenueName.trim() || !newVenueLink.trim()) return;
+    try {
+      const docRef = await addDoc(collection(db, 'venues'), {
+        name: newVenueName.trim(),
+        mapsLink: newVenueLink.trim()
+      });
+      setSelectedVenueId(docRef.id);
+      setIsAddingVenue(false);
+      setNewVenueName('');
+      setNewVenueLink('');
+    } catch (err) {
+      console.error(err);
+      alert('Failed to save venue');
+    }
+  };
 
   const resetForm = () => {
     setEditingId(null);
     setDate('');
-    setVenue('');
-    setMapsLink('');
+    setSelectedVenueId('');
     setDefaultTimes();
     setMaxPlayers(12);
   };
@@ -65,8 +98,17 @@ export const AdminMatches: React.FC = () => {
     setEditingId(m.id);
     setDate(m.date);
     setTime(m.time);
-    setVenue(m.venue);
-    setMapsLink(m.mapsLink);
+    
+    // Find venue by name to set dropdown
+    const foundVenue = venues.find(v => v.name === m.venue);
+    if (foundVenue) {
+      setSelectedVenueId(foundVenue.id);
+    } else {
+      // Legacy match with string venue not in DB
+      // We can just add it silently or leave it unselected
+      setSelectedVenueId('');
+      alert(`Warning: This match uses a legacy venue "${m.venue}". Please select a venue from the dropdown to continue saving.`);
+    }
     
     setTier1Unlock(toLocalFormat(new Date(m.tier1UnlockTime)));
     setTier2Unlock(toLocalFormat(new Date(m.tier2UnlockTime || (m as any).tier23UnlockTime)));
@@ -158,8 +200,27 @@ export const AdminMatches: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (isAddingVenue) {
+      alert("Please click 'Save & Select Venue' to finish adding your new venue before saving the match.");
+      return;
+    }
+
     setLoading(true);
     
+    if (!selectedVenueId) {
+      alert("Please select a venue!");
+      setLoading(false);
+      return;
+    }
+
+    const selectedVenue = venues.find(v => v.id === selectedVenueId);
+    if (!selectedVenue) {
+      alert("Selected venue not found.");
+      setLoading(false);
+      return;
+    }
+
     // Date Validation
     const matchDateObj = new Date(`${date}T${time}`);
     const t1 = new Date(tier1Unlock);
@@ -187,8 +248,8 @@ export const AdminMatches: React.FC = () => {
       const matchData = {
         date,
         time,
-        venue,
-        mapsLink,
+        venue: selectedVenue.name,
+        mapsLink: selectedVenue.mapsLink,
         tier1UnlockTime: new Date(tier1Unlock).toISOString(),
         tier2UnlockTime: new Date(tier2Unlock).toISOString(),
         tier3UnlockTime: new Date(tier3Unlock).toISOString(),
@@ -244,15 +305,46 @@ export const AdminMatches: React.FC = () => {
               <input type="number" required min="4" max="30" value={maxPlayers} onChange={e => setMaxPlayers(parseInt(e.target.value))}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-emerald-500 focus:border-emerald-500" />
             </div>
-            <div className="lg:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Venue Name</label>
-              <input type="text" required placeholder="e.g. Central Park Pitch 1" value={venue} onChange={e => setVenue(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-emerald-500 focus:border-emerald-500" />
-            </div>
             <div className="lg:col-span-3">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Google Maps Link</label>
-              <input type="url" required placeholder="https://maps.google.com/..." value={mapsLink} onChange={e => setMapsLink(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-emerald-500 focus:border-emerald-500" />
+              <label className="block text-sm font-medium text-gray-700 mb-1">Venue</label>
+              {isAddingVenue ? (
+                <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 space-y-3">
+                  <div className="flex justify-between items-center">
+                    <h4 className="font-bold text-gray-900 text-sm">Add New Venue</h4>
+                    <button type="button" onClick={() => setIsAddingVenue(false)} className="text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Venue Name</label>
+                    <input type="text" placeholder="e.g. Central Park Pitch 1" value={newVenueName} onChange={e => setNewVenueName(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-emerald-500 text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Google Maps Link</label>
+                    <input type="url" placeholder="https://maps.google.com/..." value={newVenueLink} onChange={e => setNewVenueLink(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-emerald-500 text-sm" />
+                  </div>
+                  <button type="button" onClick={handleSaveNewVenue} disabled={!newVenueName.trim() || !newVenueLink.trim()}
+                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 rounded text-sm disabled:opacity-50">
+                    Save & Select Venue
+                  </button>
+                </div>
+              ) : (
+                <select 
+                  required
+                  value={selectedVenueId}
+                  onChange={e => {
+                    if (e.target.value === 'ADD_NEW') setIsAddingVenue(true);
+                    else setSelectedVenueId(e.target.value);
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-emerald-500 focus:border-emerald-500"
+                >
+                  <option value="" disabled>Select a Venue...</option>
+                  {venues.map(v => (
+                    <option key={v.id} value={v.id}>{v.name}</option>
+                  ))}
+                  <option value="ADD_NEW" className="font-bold text-emerald-600">+ Add New Venue...</option>
+                </select>
+              )}
             </div>
             
             <div className="bg-emerald-50 p-3 rounded-lg border border-emerald-100">
@@ -274,7 +366,7 @@ export const AdminMatches: React.FC = () => {
                 className="w-full px-3 py-2 border border-amber-200 rounded-md focus:ring-amber-500 bg-white" />
             </div>
           </div>
-          <button type="submit" disabled={loading}
+          <button type="submit" disabled={loading || isAddingVenue}
             className="w-full bg-gray-900 hover:bg-black text-white font-bold py-3 px-4 rounded-lg mt-4 disabled:opacity-50">
             {loading ? 'Saving...' : (editingId ? 'Save Changes' : 'Create Match Draft (Dormant)')}
           </button>
