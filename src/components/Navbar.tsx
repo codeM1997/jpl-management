@@ -1,11 +1,13 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
-import { LogOut, Shield } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { LogOut, Shield, User } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 export const Navbar: React.FC = () => {
   const { userData, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const isAdminRoute = location.pathname.startsWith('/admin');
 
   const handleLogout = async () => {
     await logout();
@@ -43,14 +45,25 @@ export const Navbar: React.FC = () => {
             </div>
 
             {(userData.role === 'admin' || userData.role === 'organizer') && (
-              <button
-                onClick={() => navigate('/admin')}
-                title="Admin Dashboard"
-                className="p-2 rounded-lg bg-emerald-800 hover:bg-emerald-900 transition flex items-center text-xs gap-1"
-              >
-                <Shield className="w-4 h-4 text-amber-400" />
-                <span className="hidden md:inline font-medium">Dashboard</span>
-              </button>
+              isAdminRoute ? (
+                <button
+                  onClick={() => navigate('/player')}
+                  title="Player View"
+                  className="p-2 rounded-lg bg-emerald-800 hover:bg-emerald-900 transition flex items-center text-xs gap-1"
+                >
+                  <User className="w-4 h-4 text-emerald-200" />
+                  <span className="hidden md:inline font-medium">Player View</span>
+                </button>
+              ) : (
+                <button
+                  onClick={() => navigate('/admin')}
+                  title="Admin Dashboard"
+                  className="p-2 rounded-lg bg-emerald-800 hover:bg-emerald-900 transition flex items-center text-xs gap-1"
+                >
+                  <Shield className="w-4 h-4 text-amber-400" />
+                  <span className="hidden md:inline font-medium">Admin Dashboard</span>
+                </button>
+              )
             )}
 
             <button
