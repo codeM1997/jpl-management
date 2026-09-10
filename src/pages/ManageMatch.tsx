@@ -14,9 +14,11 @@ interface SortablePlayerProps {
   user: AppUser;
   disabled?: boolean;
   onRemove?: (uid: string) => void;
+  isPaid?: boolean;
+  onTogglePaid?: (uid: string) => void;
 }
 
-const SortablePlayer: React.FC<SortablePlayerProps> = ({ user, disabled, onRemove }) => {
+const SortablePlayer: React.FC<SortablePlayerProps> = ({ user, disabled, onRemove, isPaid, onTogglePaid }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: user.uid, disabled });
   
   const style = {
@@ -37,12 +39,27 @@ const SortablePlayer: React.FC<SortablePlayerProps> = ({ user, disabled, onRemov
         {...listeners}
         className="flex-grow cursor-grab active:cursor-grabbing"
       >
-        <div className="font-bold text-gray-900 text-sm">{user.name}</div>
+        <div className="font-bold text-gray-900 text-sm flex items-center gap-1">
+          {user.name}
+        </div>
         <div className="text-[10px] font-mono text-gray-500 mt-0.5">
           A:{user.attackRating} D:{user.defRating} P:{user.passingRating || 5} G:{user.gkRating || 5}
         </div>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5">
+        {onTogglePaid && (
+          <button 
+            onClick={() => onTogglePaid(user.uid)}
+            className={`px-2 py-0.5 rounded text-xs font-black border transition-colors ${
+              isPaid 
+                ? 'bg-emerald-100 text-emerald-700 border-emerald-200 hover:bg-emerald-200' 
+                : 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100'
+            }`}
+            title="Toggle Payment Status"
+          >
+            {isPaid ? '✓ PAID' : 'UNPAID'}
+          </button>
+        )}
         <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs font-black border border-gray-200">
           {user.preferredPos}
         </span>
@@ -408,9 +425,27 @@ export const ManageMatch: React.FC = () => {
     }
   };
 
+  const handleTogglePaid = async (uid: string) => {
+    if (!match || !matchId) return;
+    try {
+      const currentPaid = match.paidPlayers || [];
+      let newPaid;
+      if (currentPaid.includes(uid)) {
+        newPaid = currentPaid.filter(id => id !== uid);
+      } else {
+        newPaid = [...currentPaid, uid];
+      }
+      await updateDoc(doc(db, 'matches', matchId), { paidPlayers: newPaid });
+    } catch (err) {
+      console.error(err);
+      alert('Failed to update payment status.');
+    }
+  };
+
   if (!match) return <div className="p-8 text-center">Loading match...</div>;
 
   const activeUser = activeId ? players[activeId] : null;
+  const isLocked = match.status === 'published' || match.status === 'completed';
   const isPublished = match.status === 'published';
 
   const isTier2Open = now >= new Date(match.tier2UnlockTime || (match as any).tier23UnlockTime).getTime();
@@ -451,22 +486,22 @@ export const ManageMatch: React.FC = () => {
           <div className="flex gap-2 w-full sm:w-auto">
             <button 
               onClick={handleReset} 
-              disabled={isPublished}
+              disabled={isLocked}
               className="flex-1 sm:flex-none bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-bold flex items-center justify-center shadow-sm transition disabled:opacity-50"
             >
               Reset Teams
             </button>
             <button 
               onClick={handleSave} 
-              disabled={saving || isPublished}
+              disabled={saving || isLocked}
               className="flex-1 sm:flex-none bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-bold flex items-center justify-center gap-2 shadow-sm transition disabled:opacity-50"
             >
               <Save className="w-4 h-4" /> Save
             </button>
             <button 
               onClick={handlePublish} 
-              disabled={saving}
-              className={`flex-1 sm:flex-none px-4 py-2 rounded-lg font-bold flex items-center justify-center gap-2 shadow-sm transition ${isPublished ? 'bg-amber-500 hover:bg-amber-600 text-white' : 'bg-indigo-600 hover:bg-indigo-700 text-white'}`}
+              disabled={saving || match.status === 'completed'}
+              className={`flex-1 sm:flex-none px-4 py-2 rounded-lg font-bold flex items-center justify-center gap-2 shadow-sm transition disabled:opacity-50 ${isPublished ? 'bg-amber-500 hover:bg-amber-600 text-white' : 'bg-indigo-600 hover:bg-indigo-700 text-white'}`}
             >
               {isPublished ? 'Unpublish' : 'Publish Match'}
             </button>
@@ -479,8 +514,8 @@ export const ManageMatch: React.FC = () => {
             <p className="text-gray-500 mt-1">{new Date(match.date).toDateString()} at {match.time} • {match.venue}</p>
           </div>
           <div className="text-right">
-            <div className="text-3xl font-black text-emerald-600">{match.roster.length}<span className="text-gray-400 text-lg">/{match.maxPlayers || 12}</span></div>
-            <div className="text-xs font-bold text-gray-500 uppercase tracking-widest">RSVPs</div>
+            <div className="text-3xl font-black text-emerald-600">{match.paidPlayers?.length || 0}<span className="text-gray-400 text-lg">/{match.roster.length}</span></div>
+            <div className="text-xs font-bold text-gray-500 uppercase tracking-widest">Paid</div>
           </div>
         </div>
 
@@ -496,7 +531,7 @@ export const ManageMatch: React.FC = () => {
                 <span className="bg-gray-200 text-gray-700 text-xs font-bold px-2 py-1 rounded-full">{unassigned.length}</span>
               </div>
               <DroppableContainer id="unassigned" items={unassigned}>
-                {unassigned.map(uid => players[uid] ? <SortablePlayer key={uid} user={players[uid]} disabled={isPublished} onRemove={handleRemoveFromRoster} /> : null)}
+                {unassigned.map(uid => players[uid] ? <SortablePlayer key={uid} user={players[uid]} disabled={isLocked} onRemove={handleRemoveFromRoster} isPaid={match.paidPlayers?.includes(uid)} onTogglePaid={handleTogglePaid} /> : null)}
                 {unassigned.length === 0 && (
                   <div className="text-center text-gray-400 text-sm mt-8 border-2 border-dashed border-gray-300 rounded-lg py-8">
                     All players assigned.
@@ -504,7 +539,7 @@ export const ManageMatch: React.FC = () => {
                 )}
               </DroppableContainer>
               
-              {!isPublished && (
+              {!isLocked && (
                 <form onSubmit={handleAddGuest} className="mt-4 pt-4 border-t border-gray-200">
                   <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">Add Temporary Guest</label>
                   <div className="flex gap-2">
@@ -536,7 +571,7 @@ export const ManageMatch: React.FC = () => {
                 <span className="bg-red-200 text-red-800 text-xs font-bold px-2 py-1 rounded-full">{teamRed.length}</span>
               </div>
               <DroppableContainer id="teamRed" items={teamRed}>
-                {teamRed.map(uid => players[uid] ? <SortablePlayer key={uid} user={players[uid]} disabled={isPublished} onRemove={handleRemoveFromRoster} /> : null)}
+                {teamRed.map(uid => players[uid] ? <SortablePlayer key={uid} user={players[uid]} disabled={isLocked} onRemove={handleRemoveFromRoster} isPaid={match.paidPlayers?.includes(uid)} onTogglePaid={handleTogglePaid} /> : null)}
                 {teamRed.length === 0 && (
                   <div className="text-center text-red-300 text-sm mt-8 border-2 border-dashed border-red-200 rounded-lg py-8">
                     Drag players here
@@ -554,7 +589,7 @@ export const ManageMatch: React.FC = () => {
                 <span className="bg-slate-200 text-slate-700 text-xs font-bold px-2 py-1 rounded-full">{teamWhite.length}</span>
               </div>
               <DroppableContainer id="teamWhite" items={teamWhite}>
-                {teamWhite.map(uid => players[uid] ? <SortablePlayer key={uid} user={players[uid]} disabled={isPublished} onRemove={handleRemoveFromRoster} /> : null)}
+                {teamWhite.map(uid => players[uid] ? <SortablePlayer key={uid} user={players[uid]} disabled={isLocked} onRemove={handleRemoveFromRoster} isPaid={match.paidPlayers?.includes(uid)} onTogglePaid={handleTogglePaid} /> : null)}
                 {teamWhite.length === 0 && (
                   <div className="text-center text-slate-400 text-sm mt-8 border-2 border-dashed border-slate-300 rounded-lg py-8">
                     Drag players here

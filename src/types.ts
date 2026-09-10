@@ -36,5 +36,6 @@ export interface Match {
   waitlist: string[]; // Array of UIDs
   teamRed: string[]; // Array of UIDs
   teamWhite: string[]; // Array of UIDs
+  paidPlayers?: string[]; // Array of UIDs who have paid
   createdAt: any;
 }
