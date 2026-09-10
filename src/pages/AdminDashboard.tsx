@@ -15,11 +15,11 @@ export const AdminDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'matches' | 'queue' | 'players'>('matches');
   
   // State for the form data of each pending user
-  const [approvalData, setApprovalData] = useState<Record<string, { tier: Tier, att: number, def: number, role: UserRole }>>({});
+  const [approvalData, setApprovalData] = useState<Record<string, { tier: Tier, att: number, def: number, pas: number, gk: number, role: UserRole }>>({});
 
   // Editing Player State
   const [editingPlayer, setEditingPlayer] = useState<AppUser | null>(null);
-  const [editData, setEditData] = useState<{ tier: Tier, att: number, def: number, role: UserRole }>({ tier: 2, att: 5, def: 5, role: 'player' });
+  const [editData, setEditData] = useState<{ name: string, tier: Tier, att: number, def: number, pas: number, gk: number, role: UserRole }>({ name: '', tier: 2, att: 5, def: 5, pas: 5, gk: 5, role: 'player' });
 
   useEffect(() => {
     // Listen for pending users
@@ -32,7 +32,14 @@ export const AdminDashboard: React.FC = () => {
         const u = doc.data() as AppUser;
         users.push(u);
         if (!newApprovalData[u.uid]) {
-          newApprovalData[u.uid] = { tier: 2, att: 5, def: 5, role: 'player' }; // Defaults
+          newApprovalData[u.uid] = { 
+            tier: 2, 
+            att: u.attackRating || 5, 
+            def: u.defRating || 5, 
+            pas: u.passingRating || 5, 
+            gk: u.gkRating || 5, 
+            role: 'player' 
+          };
         }
       });
       
@@ -54,7 +61,7 @@ export const AdminDashboard: React.FC = () => {
     };
   }, []);
 
-  const handleUpdate = (uid: string, field: 'tier' | 'att' | 'def' | 'role', value: any) => {
+  const handleUpdate = (uid: string, field: 'tier' | 'att' | 'def' | 'pas' | 'gk' | 'role', value: any) => {
     setApprovalData(prev => ({
       ...prev,
       [uid]: { ...prev[uid], [field]: value }
@@ -73,7 +80,9 @@ export const AdminDashboard: React.FC = () => {
         role: finalRole,
         tier: data.tier,
         attackRating: data.att,
-        defRating: data.def
+        defRating: data.def,
+        passingRating: data.pas,
+        gkRating: data.gk
       });
     } catch (err) {
       console.error("Failed to approve user:", err);
@@ -113,16 +122,27 @@ export const AdminDashboard: React.FC = () => {
 
   const openEditModal = (user: AppUser) => {
     setEditingPlayer(user);
-    setEditData({ tier: user.tier || 2, att: user.attackRating || 5, def: user.defRating || 5, role: user.role });
+    setEditData({ 
+      name: user.name,
+      tier: user.tier || 2, 
+      att: user.attackRating || 5, 
+      def: user.defRating || 5, 
+      pas: user.passingRating || 5,
+      gk: user.gkRating || 5,
+      role: user.role 
+    });
   };
 
   const handleSaveEdit = async () => {
     if (!editingPlayer) return;
     try {
       await updateDoc(doc(db, 'users', editingPlayer.uid), {
+        name: editData.name.trim() || editingPlayer.name,
         tier: editData.tier,
         attackRating: editData.att,
         defRating: editData.def,
+        passingRating: editData.pas,
+        gkRating: editData.gk,
         role: editData.role
       });
       setEditingPlayer(null);
@@ -213,28 +233,37 @@ export const AdminDashboard: React.FC = () => {
                         </div>
                       )}
 
-                      <div className="flex gap-3">
-                        <div className="flex-1">
-                          <label className="text-xs font-bold text-gray-700 block mb-1 flex items-center gap-1">
-                            ATT <Star className="w-3 h-3 text-amber-500" />
-                          </label>
-                          <input 
-                            type="number" min="1" max="10" 
-                            value={approvalData[user.uid]?.att || 5} 
-                            onChange={(e) => handleUpdate(user.uid, 'att', Number(e.target.value))}
-                            className="w-full text-sm rounded border-gray-300 focus:ring-emerald-500 py-1"
-                          />
+                      <div className="space-y-3 pt-2 border-t border-gray-200">
+                        <div>
+                          <div className="flex justify-between items-center mb-1">
+                            <label className="text-xs font-bold text-gray-700 flex items-center gap-1">ATT <Star className="w-3 h-3 text-amber-500" /></label>
+                            <span className="text-xs font-black text-amber-600">{approvalData[user.uid]?.att || 5}</span>
+                          </div>
+                          <input type="range" min="1" max="10" value={approvalData[user.uid]?.att || 5} onChange={(e) => handleUpdate(user.uid, 'att', Number(e.target.value))} className="w-full accent-amber-500" />
                         </div>
-                        <div className="flex-1">
-                          <label className="text-xs font-bold text-gray-700 block mb-1 flex items-center gap-1">
-                            DEF <ShieldAlert className="w-3 h-3 text-blue-500" />
-                          </label>
-                          <input 
-                            type="number" min="1" max="10" 
-                            value={approvalData[user.uid]?.def || 5} 
-                            onChange={(e) => handleUpdate(user.uid, 'def', Number(e.target.value))}
-                            className="w-full text-sm rounded border-gray-300 focus:ring-emerald-500 py-1"
-                          />
+                        
+                        <div>
+                          <div className="flex justify-between items-center mb-1">
+                            <label className="text-xs font-bold text-gray-700 flex items-center gap-1">DEF <ShieldAlert className="w-3 h-3 text-blue-500" /></label>
+                            <span className="text-xs font-black text-blue-600">{approvalData[user.uid]?.def || 5}</span>
+                          </div>
+                          <input type="range" min="1" max="10" value={approvalData[user.uid]?.def || 5} onChange={(e) => handleUpdate(user.uid, 'def', Number(e.target.value))} className="w-full accent-blue-500" />
+                        </div>
+
+                        <div>
+                          <div className="flex justify-between items-center mb-1">
+                            <label className="text-xs font-bold text-gray-700 flex items-center gap-1">PAS</label>
+                            <span className="text-xs font-black text-emerald-600">{approvalData[user.uid]?.pas || 5}</span>
+                          </div>
+                          <input type="range" min="1" max="10" value={approvalData[user.uid]?.pas || 5} onChange={(e) => handleUpdate(user.uid, 'pas', Number(e.target.value))} className="w-full accent-emerald-500" />
+                        </div>
+
+                        <div>
+                          <div className="flex justify-between items-center mb-1">
+                            <label className="text-xs font-bold text-gray-700 flex items-center gap-1">GK</label>
+                            <span className="text-xs font-black text-purple-600">{approvalData[user.uid]?.gk || 5}</span>
+                          </div>
+                          <input type="range" min="1" max="10" value={approvalData[user.uid]?.gk || 5} onChange={(e) => handleUpdate(user.uid, 'gk', Number(e.target.value))} className="w-full accent-purple-500" />
                         </div>
                       </div>
 
@@ -297,8 +326,8 @@ export const AdminDashboard: React.FC = () => {
                           Tier {user.tier}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        ATT: {user.attackRating} | DEF: {user.defRating}
+                      <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-500 font-mono">
+                        A:{user.attackRating} D:{user.defRating} P:{user.passingRating || 5} G:{user.gkRating || 5}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium flex gap-3">
                         {isAdmin && (
@@ -330,6 +359,10 @@ export const AdminDashboard: React.FC = () => {
               </div>
               <div className="space-y-4">
                 <div>
+                  <label className="text-sm font-bold text-gray-700 block mb-1">Name</label>
+                  <input type="text" value={editData.name} onChange={e => setEditData(prev => ({ ...prev, name: e.target.value }))} className="w-full rounded border-gray-300 focus:ring-emerald-500" />
+                </div>
+                <div>
                   <label className="text-sm font-bold text-gray-700 block mb-1">Role</label>
                   <select 
                     value={editData.role} 
@@ -353,16 +386,38 @@ export const AdminDashboard: React.FC = () => {
                     <option value={3}>Tier 3 (Waitlist likely)</option>
                   </select>
                 </div>
-                <div className="flex gap-4">
-                  <div className="flex-1">
-                    <label className="text-sm font-bold text-gray-700 block mb-1">ATT</label>
-                    <input type="number" min="1" max="10" value={editData.att} onChange={e => setEditData(prev => ({ ...prev, att: Number(e.target.value) }))} className="w-full rounded border-gray-300" />
+                
+                <div className="space-y-3 pt-2 border-t border-gray-200">
+                  <div>
+                    <div className="flex justify-between items-center mb-1">
+                      <label className="text-xs font-bold text-gray-700">ATT</label>
+                      <span className="text-xs font-black text-amber-600">{editData.att}/10</span>
+                    </div>
+                    <input type="range" min="1" max="10" value={editData.att} onChange={e => setEditData(prev => ({ ...prev, att: Number(e.target.value) }))} className="w-full accent-amber-500" />
                   </div>
-                  <div className="flex-1">
-                    <label className="text-sm font-bold text-gray-700 block mb-1">DEF</label>
-                    <input type="number" min="1" max="10" value={editData.def} onChange={e => setEditData(prev => ({ ...prev, def: Number(e.target.value) }))} className="w-full rounded border-gray-300" />
+                  <div>
+                    <div className="flex justify-between items-center mb-1">
+                      <label className="text-xs font-bold text-gray-700">DEF</label>
+                      <span className="text-xs font-black text-blue-600">{editData.def}/10</span>
+                    </div>
+                    <input type="range" min="1" max="10" value={editData.def} onChange={e => setEditData(prev => ({ ...prev, def: Number(e.target.value) }))} className="w-full accent-blue-500" />
+                  </div>
+                  <div>
+                    <div className="flex justify-between items-center mb-1">
+                      <label className="text-xs font-bold text-gray-700">PAS</label>
+                      <span className="text-xs font-black text-emerald-600">{editData.pas}/10</span>
+                    </div>
+                    <input type="range" min="1" max="10" value={editData.pas} onChange={e => setEditData(prev => ({ ...prev, pas: Number(e.target.value) }))} className="w-full accent-emerald-500" />
+                  </div>
+                  <div>
+                    <div className="flex justify-between items-center mb-1">
+                      <label className="text-xs font-bold text-gray-700">GK</label>
+                      <span className="text-xs font-black text-purple-600">{editData.gk}/10</span>
+                    </div>
+                    <input type="range" min="1" max="10" value={editData.gk} onChange={e => setEditData(prev => ({ ...prev, gk: Number(e.target.value) }))} className="w-full accent-purple-500" />
                   </div>
                 </div>
+
                 <div className="pt-4 flex gap-2">
                   <button onClick={handleSaveEdit} className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-lg">
                     Save Changes

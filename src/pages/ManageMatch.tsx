@@ -38,7 +38,9 @@ const SortablePlayer: React.FC<SortablePlayerProps> = ({ user, disabled, onRemov
         className="flex-grow cursor-grab active:cursor-grabbing"
       >
         <div className="font-bold text-gray-900 text-sm">{user.name}</div>
-        <div className="text-xs text-gray-500">ATT: {user.attackRating} | DEF: {user.defRating}</div>
+        <div className="text-[10px] font-mono text-gray-500 mt-0.5">
+          A:{user.attackRating} D:{user.defRating} P:{user.passingRating || 5} G:{user.gkRating || 5}
+        </div>
       </div>
       <div className="flex items-center gap-2">
         <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs font-black border border-gray-200">
@@ -155,6 +157,8 @@ export const ManageMatch: React.FC = () => {
               preferredPos: 'MID',
               attackRating: 5,
               defRating: 5,
+              passingRating: 5,
+              gkRating: 5,
             } as AppUser;
           });
           
@@ -544,7 +548,7 @@ export const ManageMatch: React.FC = () => {
                           <span className="font-bold text-amber-900">{idx + 1}. {user.name}</span>
                           <span className="text-xs font-bold bg-amber-200 text-amber-800 px-1.5 py-0.5 rounded">{user.preferredPos}</span>
                         </div>
-                        <div className="text-xs text-amber-700 mb-3">Tier {user.tier} | ATT: {user.attackRating} DEF: {user.defRating}</div>
+                        <div className="text-[10px] font-mono text-amber-700 mb-3">Tier {user.tier} | A:{user.attackRating} D:{user.defRating} P:{user.passingRating || 5} G:{user.gkRating || 5}</div>
                       </div>
                       <button 
                         onClick={() => handlePromoteFromWaitlist(uid)}
@@ -566,7 +570,9 @@ export const ManageMatch: React.FC = () => {
               <div className="bg-white p-3 rounded-lg border-2 border-emerald-500 shadow-xl opacity-90 scale-105 flex justify-between items-center w-full max-w-sm cursor-grabbing">
                 <div>
                   <div className="font-bold text-gray-900 text-sm">{activeUser.name}</div>
-                  <div className="text-xs text-gray-500">ATT: {activeUser.attackRating} | DEF: {activeUser.defRating}</div>
+                  <div className="text-[10px] font-mono text-gray-500 mt-0.5">
+                    A:{activeUser.attackRating} D:{activeUser.defRating} P:{activeUser.passingRating || 5} G:{activeUser.gkRating || 5}
+                  </div>
                 </div>
                 <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs font-black border border-gray-200">
                   {activeUser.preferredPos}

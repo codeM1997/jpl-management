@@ -12,6 +12,8 @@ export interface AppUser {
   preferredPos: Position;
   attackRating: number; // 1-10
   defRating: number;    // 1-10
+  passingRating?: number; // 1-10
+  gkRating?: number;      // 1-10
   fcmToken?: string | null;
   createdAt: any;
 }
