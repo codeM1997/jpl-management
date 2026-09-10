@@ -10,6 +10,7 @@ import { useAuth } from '../context/AuthContext';
 export const AdminDashboard: React.FC = () => {
   const { userData } = useAuth();
   const isAdmin = userData?.role === 'admin';
+  const isOrganizer = userData?.role === 'organizer';
   const [pendingUsers, setPendingUsers] = useState<AppUser[]>([]);
   const [approvedUsers, setApprovedUsers] = useState<AppUser[]>([]);
   const [activeTab, setActiveTab] = useState<'matches' | 'queue' | 'players'>('matches');
@@ -330,14 +331,16 @@ export const AdminDashboard: React.FC = () => {
                         A:{user.attackRating} D:{user.defRating} P:{user.passingRating || 5} G:{user.gkRating || 5}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium flex gap-3">
-                        {isAdmin && (
-                          <button onClick={() => openEditModal(user)} className="text-emerald-600 hover:text-emerald-900 flex items-center gap-1">
-                            <Edit2 className="w-4 h-4" /> Edit
-                          </button>
+                        {(isAdmin || (isOrganizer && user.role === 'player')) && (
+                          <>
+                            <button onClick={() => openEditModal(user)} className="text-emerald-600 hover:text-emerald-900 flex items-center gap-1">
+                              <Edit2 className="w-4 h-4" /> Edit
+                            </button>
+                            <button onClick={() => handleReject(user.uid)} className="text-red-600 hover:text-red-900">
+                              Remove
+                            </button>
+                          </>
                         )}
-                        <button onClick={() => handleReject(user.uid)} className="text-red-600 hover:text-red-900">
-                          Remove
-                        </button>
                       </td>
                     </tr>
                   ))}
@@ -362,18 +365,20 @@ export const AdminDashboard: React.FC = () => {
                   <label className="text-sm font-bold text-gray-700 block mb-1">Name</label>
                   <input type="text" value={editData.name} onChange={e => setEditData(prev => ({ ...prev, name: e.target.value }))} className="w-full rounded border-gray-300 focus:ring-emerald-500" />
                 </div>
-                <div>
-                  <label className="text-sm font-bold text-gray-700 block mb-1">Role</label>
-                  <select 
-                    value={editData.role} 
-                    onChange={e => setEditData(prev => ({ ...prev, role: e.target.value as UserRole }))}
-                    className="w-full rounded border-gray-300 focus:ring-emerald-500"
-                  >
-                    <option value="player">Player</option>
-                    <option value="organizer">Organizer</option>
-                    <option value="admin">Admin</option>
-                  </select>
-                </div>
+                {isAdmin && (
+                  <div>
+                    <label className="text-sm font-bold text-gray-700 block mb-1">Role</label>
+                    <select 
+                      value={editData.role} 
+                      onChange={e => setEditData(prev => ({ ...prev, role: e.target.value as UserRole }))}
+                      className="w-full rounded border-gray-300 focus:ring-emerald-500"
+                    >
+                      <option value="player">Player</option>
+                      <option value="organizer">Organizer</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                  </div>
+                )}
                 <div>
                   <label className="text-sm font-bold text-gray-700 block mb-1">Tier</label>
                   <select 
