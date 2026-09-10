@@ -5,12 +5,12 @@ import { getMessaging, type Messaging } from 'firebase/messaging';
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
-  apiKey: "AIzaSyDCaA2JSvVWcXkRZBPPJS5FTlUkkTO-8iE",
-  authDomain: "football-organizer-7a1ae.firebaseapp.com",
-  projectId: "football-organizer-7a1ae",
-  storageBucket: "football-organizer-7a1ae.firebasestorage.app",
-  messagingSenderId: "1001772577694",
-  appId: "1:1001772577694:web:8149d63860441e94e79c8f"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
 // Initialize Firebase
