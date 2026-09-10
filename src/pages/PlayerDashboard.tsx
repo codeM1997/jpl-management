@@ -28,8 +28,8 @@ export const PlayerDashboard: React.FC = () => {
       const matches: Match[] = [];
       snapshot.forEach(doc => matches.push({ id: doc.id, ...doc.data() } as Match));
       
-      // Filter upcoming match (first one that is not completed or dormant)
-      const upcoming = matches.find(m => m.status !== 'completed' && m.status !== 'dormant') || null;
+      // Filter upcoming match (first one that is not completed)
+      const upcoming = matches.find(m => m.status !== 'completed') || null;
       setUpcomingMatch(upcoming);
 
       // Filter history matches (completed AND user is in roster)
@@ -184,7 +184,7 @@ export const PlayerDashboard: React.FC = () => {
       return (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-12 text-center text-gray-500 mb-8">
           <Calendar className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-          No matches available for your tier yet.
+          No matches scheduled currently.
         </div>
       );
     }
