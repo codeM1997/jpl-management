@@ -7,7 +7,7 @@ import { Navbar } from '../components/Navbar';
 import { DndContext, pointerWithin, KeyboardSensor, PointerSensor, useSensor, useSensors, DragOverlay, type DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ArrowLeft, Users, Shield, Save, X, PlusCircle } from 'lucide-react';
+import { ArrowLeft, Users, Shield, Save, X, PlusCircle, Share2 } from 'lucide-react';
 
 // --- Sortable Player Item Component ---
 interface SortablePlayerProps {
@@ -423,6 +423,43 @@ export const ManageMatch: React.FC = () => {
     }
   };
 
+  const handleShareTeams = () => {
+    if (!match) return;
+
+    const [h, min] = match.time.split(':');
+    const hours = parseInt(h, 10);
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    const hrs12 = hours % 12 || 12;
+    const timeAMPM = `${hrs12}:${min} ${ampm}`;
+    const d = new Date(match.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+
+    const getPlayerName = (uid: string) => uid.startsWith('guest:') ? uid.split(':')[1] : (players[uid]?.name || 'Unknown');
+    
+    let redNames = teamRed.map((uid, i) => `${i + 1}. ${getPlayerName(uid)}`);
+    let whiteNames = teamWhite.map((uid, i) => `${i + 1}. ${getPlayerName(uid)}`);
+    
+    const maxRedLen = Math.max(...redNames.map(n => n.length), 6);
+    
+    let teamLines = [];
+    const maxRows = Math.max(redNames.length, whiteNames.length);
+    for (let i = 0; i < maxRows; i++) {
+      const red = redNames[i] || '';
+      const white = whiteNames[i] || '';
+      const padding = ' '.repeat(Math.max(0, maxRedLen - red.length + 2));
+      teamLines.push(`${red}${padding}| ${white}`);
+    }
+
+    const titlePadding = ' '.repeat(Math.max(0, maxRedLen - 7 + 2));
+    const text = `🔥 *Match Teams are SET!* 🔥\n\n📅 ${d}  |  ⏰ ${timeAMPM}\n📍 ${match.venue}\n🗺️ Map: ${match.mapsLink}\n\n🔴 *RED*${titlePadding}| ⚪ *WHITE*\n${teamLines.join('\n')}\n\nSee you on the pitch! ⚽`;
+
+    navigator.clipboard.writeText(text).then(() => {
+      alert("Teams copied to clipboard! Paste this into your WhatsApp group.");
+    }).catch(err => {
+      console.error("Could not copy text: ", err);
+      window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+    });
+  };
+
   if (!match) return <div className="p-8 text-center">Loading match...</div>;
 
   const activeUser = activeId ? players[activeId] : null;
@@ -455,6 +492,14 @@ export const ManageMatch: React.FC = () => {
               className="flex-1 sm:flex-none bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-bold flex items-center justify-center gap-2 shadow-sm transition disabled:opacity-50"
             >
               <Save className="w-4 h-4" /> Save
+            </button>
+            <button 
+              onClick={handleShareTeams} 
+              disabled={!isPublished}
+              className="flex-1 sm:flex-none bg-blue-100 hover:bg-blue-200 text-blue-800 px-4 py-2 rounded-lg font-bold flex items-center justify-center gap-2 shadow-sm transition disabled:opacity-50"
+              title={!isPublished ? 'You must publish the match first' : 'Copy Teams to Clipboard'}
+            >
+              <Share2 className="w-4 h-4" /> Share Teams
             </button>
             <button 
               onClick={handlePublish} 

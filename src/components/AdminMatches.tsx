@@ -135,7 +135,13 @@ export const AdminMatches: React.FC = () => {
 
   const handleShare = (m: Match) => {
     const d = new Date(m.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
-    const text = `⚽ *New Football Match!* ⚽\n\n📅 Date: ${d}\n⏰ Time: ${m.time}\n📍 Venue: ${m.venue}\n\n👉 *RSVP Now:* ${window.location.origin}\n_(Tap the link to join the roster)_`;
+    const [h, min] = m.time.split(':');
+    const hours = parseInt(h, 10);
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    const hrs12 = hours % 12 || 12;
+    const timeAMPM = `${hrs12}:${min} ${ampm}`;
+
+    const text = `⚽ *New Football Match!* ⚽\n\n📅 Date: ${d}\n⏰ Time: ${timeAMPM}\n📍 Venue: ${m.venue}\n\n👉 *RSVP Now:* ${window.location.origin}\n_(Tap the link to join the roster)_`;
     
     // Copy to clipboard
     navigator.clipboard.writeText(text).then(() => {
