@@ -33,11 +33,7 @@ export const Navbar: React.FC = () => {
                 <span className="uppercase px-1.5 py-0.5 rounded bg-emerald-800 text-[10px] font-bold">
                   {userData.role}
                 </span>
-                {(userData.role === 'admin' || userData.role === 'organizer') && userData.tier && (
-                  <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-200 text-[10px] font-bold">
-                    Tier {userData.tier}
-                  </span>
-                )}
+
                 <span className="px-1.5 py-0.5 rounded bg-emerald-900 text-emerald-300 text-[10px] font-bold">
                   {userData.preferredPos}
                 </span>
