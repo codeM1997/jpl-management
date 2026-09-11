@@ -11,11 +11,7 @@ export const Join: React.FC = () => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
-  const [position, setPosition] = useState<Position>('MID');
-  const [attackRating, setAttackRating] = useState(5);
-  const [defRating, setDefRating] = useState(5);
-  const [passingRating, setPassingRating] = useState(5);
-  const [gkRating, setGkRating] = useState(5);
+  const [positions, setPositions] = useState<Position[]>(['MID']);
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -46,11 +42,12 @@ export const Join: React.FC = () => {
         phone: phone.trim(),
         role: 'pending', // Awaits admin approval
         tier: null,
-        preferredPos: position,
-        attackRating,
-        defRating,
-        passingRating,
-        gkRating,
+        preferredPos: positions,
+        attackRating: 5,
+        defRating: 5,
+        passingRating: 5,
+        gkRating: 5,
+        iqRating: 5,
         fcmToken: null,
         createdAt: serverTimestamp()
       });
@@ -117,51 +114,24 @@ export const Join: React.FC = () => {
             </div>
 
             <div>
-              <label htmlFor="position" className="block text-sm font-medium text-gray-700 mb-1">Preferred Position</label>
-              <select
-                id="position" value={position} onChange={(e) => setPosition(e.target.value as Position)}
-                className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm"
-              >
-                <option value="GK">Goalkeeper (GK)</option>
-                <option value="DEF">Defender (DEF)</option>
-                <option value="MID">Midfielder (MID)</option>
-                <option value="ST">Striker (ST)</option>
-              </select>
-            </div>
-
-            <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 space-y-4">
-              <h3 className="text-sm font-bold text-gray-900 border-b pb-2">Self-Rate Your Skills (1-10)</h3>
-              
-              <div>
-                <div className="flex justify-between">
-                  <label className="text-xs font-bold text-gray-700">Attack</label>
-                  <span className="text-xs font-black text-emerald-600">{attackRating}/10</span>
-                </div>
-                <input type="range" min="1" max="10" value={attackRating} onChange={(e) => setAttackRating(Number(e.target.value))} className="w-full mt-1 accent-emerald-600" />
-              </div>
-
-              <div>
-                <div className="flex justify-between">
-                  <label className="text-xs font-bold text-gray-700">Defense</label>
-                  <span className="text-xs font-black text-blue-600">{defRating}/10</span>
-                </div>
-                <input type="range" min="1" max="10" value={defRating} onChange={(e) => setDefRating(Number(e.target.value))} className="w-full mt-1 accent-blue-600" />
-              </div>
-
-              <div>
-                <div className="flex justify-between">
-                  <label className="text-xs font-bold text-gray-700">Passing</label>
-                  <span className="text-xs font-black text-amber-600">{passingRating}/10</span>
-                </div>
-                <input type="range" min="1" max="10" value={passingRating} onChange={(e) => setPassingRating(Number(e.target.value))} className="w-full mt-1 accent-amber-600" />
-              </div>
-
-              <div>
-                <div className="flex justify-between">
-                  <label className="text-xs font-bold text-gray-700">Goalkeeping</label>
-                  <span className="text-xs font-black text-purple-600">{gkRating}/10</span>
-                </div>
-                <input type="range" min="1" max="10" value={gkRating} onChange={(e) => setGkRating(Number(e.target.value))} className="w-full mt-1 accent-purple-600" />
+              <label className="block text-sm font-medium text-gray-700 mb-2">Preferred Positions (Select multiple)</label>
+              <div className="flex gap-2">
+                {(['GK', 'DEF', 'MID', 'ST'] as Position[]).map(pos => (
+                  <button
+                    key={pos}
+                    type="button"
+                    onClick={() => {
+                      if (positions.includes(pos)) {
+                        if (positions.length > 1) setPositions(positions.filter(p => p !== pos));
+                      } else {
+                        setPositions([...positions, pos]);
+                      }
+                    }}
+                    className={`flex-1 py-2 px-1 text-xs font-bold rounded-lg border transition-colors ${positions.includes(pos) ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'}`}
+                  >
+                    {pos}
+                  </button>
+                ))}
               </div>
             </div>
 

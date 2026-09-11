@@ -9,11 +9,12 @@ export interface AppUser {
   phone: string;
   role: UserRole;
   tier: Tier | null;
-  preferredPos: Position;
+  preferredPos: Position[];
   attackRating: number; // 1-10
   defRating: number;    // 1-10
   passingRating?: number; // 1-10
   gkRating?: number;      // 1-10
+  iqRating?: number;      // 1-10
   fcmToken?: string | null;
   createdAt: any;
 }

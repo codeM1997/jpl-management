@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Navbar } from '../components/Navbar';
 import { collection, query, where, onSnapshot, doc, updateDoc, deleteDoc, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
-import type { AppUser, Tier, UserRole } from '../types';
+import type { AppUser, Tier, UserRole, Position } from '../types';
 import { Check, X, ShieldAlert, Star, Edit2 } from 'lucide-react';
 import { AdminMatches } from '../components/AdminMatches';
 import { useAuth } from '../context/AuthContext';
@@ -16,11 +16,11 @@ export const AdminDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'matches' | 'queue' | 'players'>('matches');
   
   // State for the form data of each pending user
-  const [approvalData, setApprovalData] = useState<Record<string, { tier: Tier, att: number, def: number, pas: number, gk: number, role: UserRole }>>({});
+  const [approvalData, setApprovalData] = useState<Record<string, { tier: Tier, att: number, def: number, pas: number, gk: number, iq: number, role: UserRole, positions: Position[] }>>({});
 
   // Editing Player State
   const [editingPlayer, setEditingPlayer] = useState<AppUser | null>(null);
-  const [editData, setEditData] = useState<{ name: string, tier: Tier, att: number, def: number, pas: number, gk: number, role: UserRole }>({ name: '', tier: 2, att: 5, def: 5, pas: 5, gk: 5, role: 'player' });
+  const [editData, setEditData] = useState<{ name: string, tier: Tier, att: number, def: number, pas: number, gk: number, iq: number, role: UserRole, positions: Position[] }>({ name: '', tier: 2, att: 5, def: 5, pas: 5, gk: 5, iq: 5, role: 'player', positions: ['MID'] });
 
   useEffect(() => {
     // Listen for pending users
@@ -39,7 +39,9 @@ export const AdminDashboard: React.FC = () => {
             def: u.defRating || 5, 
             pas: u.passingRating || 5, 
             gk: u.gkRating || 5, 
-            role: 'player' 
+            iq: u.iqRating || 5,
+            role: 'player',
+            positions: Array.isArray(u.preferredPos) ? u.preferredPos : ([u.preferredPos] as Position[])
           };
         }
       });
@@ -62,7 +64,7 @@ export const AdminDashboard: React.FC = () => {
     };
   }, []);
 
-  const handleUpdate = (uid: string, field: 'tier' | 'att' | 'def' | 'pas' | 'gk' | 'role', value: any) => {
+  const handleUpdate = (uid: string, field: 'tier' | 'att' | 'def' | 'pas' | 'gk' | 'iq' | 'positions' | 'role', value: any) => {
     setApprovalData(prev => ({
       ...prev,
       [uid]: { ...prev[uid], [field]: value }
@@ -83,7 +85,9 @@ export const AdminDashboard: React.FC = () => {
         attackRating: data.att,
         defRating: data.def,
         passingRating: data.pas,
-        gkRating: data.gk
+        gkRating: data.gk,
+        iqRating: data.iq,
+        preferredPos: data.positions
       });
     } catch (err) {
       console.error("Failed to approve user:", err);
@@ -130,7 +134,9 @@ export const AdminDashboard: React.FC = () => {
       def: user.defRating || 5, 
       pas: user.passingRating || 5,
       gk: user.gkRating || 5,
-      role: user.role 
+      iq: user.iqRating || 5,
+      role: user.role,
+      positions: Array.isArray(user.preferredPos) ? user.preferredPos : ([user.preferredPos] as Position[])
     });
   };
 
@@ -144,6 +150,8 @@ export const AdminDashboard: React.FC = () => {
         defRating: editData.def,
         passingRating: editData.pas,
         gkRating: editData.gk,
+        iqRating: editData.iq,
+        preferredPos: editData.positions,
         role: editData.role
       });
       setEditingPlayer(null);
@@ -195,7 +203,7 @@ export const AdminDashboard: React.FC = () => {
                     <div className="flex items-center gap-2 mb-1">
                       <h3 className="text-lg font-bold text-gray-900">{user.name}</h3>
                       <span className="px-2 py-0.5 rounded text-xs font-bold bg-gray-100 text-gray-600 border border-gray-200">
-                        {user.preferredPos}
+                        {Array.isArray(user.preferredPos) ? user.preferredPos.join(', ') : user.preferredPos}
                       </span>
                     </div>
                     <div className="text-sm text-gray-500 space-y-0.5">
@@ -266,6 +274,36 @@ export const AdminDashboard: React.FC = () => {
                           </div>
                           <input type="range" min="1" max="10" value={approvalData[user.uid]?.gk || 5} onChange={(e) => handleUpdate(user.uid, 'gk', Number(e.target.value))} className="w-full accent-purple-500" />
                         </div>
+                        
+                        <div>
+                          <div className="flex justify-between items-center mb-1">
+                            <label className="text-xs font-bold text-gray-700 flex items-center gap-1">Football IQ</label>
+                            <span className="text-xs font-black text-indigo-600">{approvalData[user.uid]?.iq || 5}</span>
+                          </div>
+                          <input type="range" min="1" max="10" value={approvalData[user.uid]?.iq || 5} onChange={(e) => handleUpdate(user.uid, 'iq', Number(e.target.value))} className="w-full accent-indigo-500" />
+                        </div>
+
+                        <div>
+                          <label className="text-xs font-bold text-gray-700 block mb-1">Positions</label>
+                          <div className="flex flex-wrap gap-1">
+                            {(['GK', 'DEF', 'MID', 'ST'] as any[]).map(pos => {
+                              const selected = approvalData[user.uid]?.positions?.includes(pos);
+                              return (
+                                <button
+                                  key={pos}
+                                  onClick={() => {
+                                    const current = approvalData[user.uid]?.positions || [];
+                                    const next = selected ? current.filter(p => p !== pos) : [...current, pos];
+                                    if (next.length > 0) handleUpdate(user.uid, 'positions', next);
+                                  }}
+                                  className={`px-2 py-0.5 text-[10px] font-bold rounded border ${selected ? 'bg-indigo-100 border-indigo-300 text-indigo-800' : 'bg-white border-gray-200 text-gray-500'}`}
+                                >
+                                  {pos}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
                       </div>
 
                       <div className="pt-2 flex gap-2">
@@ -314,7 +352,7 @@ export const AdminDashboard: React.FC = () => {
                         <div className="flex items-center">
                           <div>
                             <div className="text-sm font-medium text-gray-900">{user.name}</div>
-                            <div className="text-sm text-gray-500">{user.preferredPos}</div>
+                            <div className="text-sm text-gray-500">{Array.isArray(user.preferredPos) ? user.preferredPos.join(', ') : user.preferredPos}</div>
                           </div>
                         </div>
                       </td>
@@ -328,7 +366,7 @@ export const AdminDashboard: React.FC = () => {
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-500 font-mono">
-                        A:{user.attackRating} D:{user.defRating} P:{user.passingRating || 5} G:{user.gkRating || 5}
+                        A:{user.attackRating} D:{user.defRating} P:{user.passingRating || 5} G:{user.gkRating || 5} IQ:{user.iqRating || 5}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium flex gap-3">
                         {(isAdmin || (isOrganizer && user.role === 'player')) && (
@@ -420,6 +458,34 @@ export const AdminDashboard: React.FC = () => {
                       <span className="text-xs font-black text-purple-600">{editData.gk}/10</span>
                     </div>
                     <input type="range" min="1" max="10" value={editData.gk} onChange={e => setEditData(prev => ({ ...prev, gk: Number(e.target.value) }))} className="w-full accent-purple-500" />
+                  </div>
+                  <div>
+                    <div className="flex justify-between items-center mb-1">
+                      <label className="text-xs font-bold text-gray-700">Football IQ</label>
+                      <span className="text-xs font-black text-indigo-600">{editData.iq}/10</span>
+                    </div>
+                    <input type="range" min="1" max="10" value={editData.iq} onChange={e => setEditData(prev => ({ ...prev, iq: Number(e.target.value) }))} className="w-full accent-indigo-500" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-700 block mb-1">Positions</label>
+                    <div className="flex flex-wrap gap-1">
+                      {(['GK', 'DEF', 'MID', 'ST'] as any[]).map(pos => {
+                        const selected = editData.positions?.includes(pos);
+                        return (
+                          <button
+                            key={pos}
+                            onClick={() => {
+                              const current = editData.positions || [];
+                              const next = selected ? current.filter(p => p !== pos) : [...current, pos];
+                              if (next.length > 0) setEditData(prev => ({ ...prev, positions: next }));
+                            }}
+                            className={`px-3 py-1 text-xs font-bold rounded border ${selected ? 'bg-indigo-100 border-indigo-300 text-indigo-800' : 'bg-white border-gray-200 text-gray-500'}`}
+                          >
+                            {pos}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
 
