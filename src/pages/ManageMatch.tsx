@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { doc, onSnapshot, updateDoc, getDocs, collection, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
-import type { Match, AppUser } from '../types';
+import type { Match, AppUser, Position } from '../types';
 import { Navbar } from '../components/Navbar';
 import { DndContext, pointerWithin, KeyboardSensor, PointerSensor, useSensor, useSensors, DragOverlay, type DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -172,7 +172,7 @@ export const ManageMatch: React.FC = () => {
               createdAt: Date.now(),
               role: 'player',
               tier: 2,
-              preferredPos: ['MID'],
+              preferredPos: ['MID' as Position],
               attackRating: 5,
               defRating: 5,
               passingRating: 5,
