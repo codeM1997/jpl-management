@@ -46,7 +46,7 @@ const SortablePlayer: React.FC<SortablePlayerProps> = ({ user, disabled, onRemov
           [{Array.isArray(user.preferredPos) ? user.preferredPos.join(', ') : user.preferredPos}]
         </div>
         <div className="text-[10px] font-mono text-gray-500 mt-0.5">
-          A:{user.attackRating} D:{user.defRating} P:{user.passingRating || 5} G:{user.gkRating || 5}
+          A:{user.attackRating} D:{user.defRating} P:{user.passingRating || 5} G:{user.gkRating || 5} IQ:{user.iqRating || 5}
         </div>
       </div>
       <div className="flex items-center gap-1.5">
@@ -177,6 +177,7 @@ export const ManageMatch: React.FC = () => {
               defRating: 5,
               passingRating: 5,
               gkRating: 5,
+              iqRating: 5,
             } as AppUser;
           });
           
@@ -611,7 +612,7 @@ export const ManageMatch: React.FC = () => {
                         <div className="text-[10px] font-bold text-amber-800 mb-0.5">
                           [{Array.isArray(user.preferredPos) ? user.preferredPos.join(', ') : user.preferredPos}]
                         </div>
-                        <div className="text-[10px] font-mono text-amber-700 mb-3">Tier {user.tier} | A:{user.attackRating} D:{user.defRating} P:{user.passingRating || 5} G:{user.gkRating || 5}</div>
+                        <div className="text-[10px] font-mono text-amber-700 mb-3">Tier {user.tier} | A:{user.attackRating} D:{user.defRating} P:{user.passingRating || 5} G:{user.gkRating || 5} IQ:{user.iqRating || 5}</div>
                       </div>
                       <button 
                         onClick={() => handlePromoteFromWaitlist(uid)}
@@ -637,7 +638,7 @@ export const ManageMatch: React.FC = () => {
                     [{Array.isArray(activeUser.preferredPos) ? activeUser.preferredPos.join(', ') : activeUser.preferredPos}]
                   </div>
                   <div className="text-[10px] font-mono text-gray-500 mt-0.5">
-                    A:{activeUser.attackRating} D:{activeUser.defRating} P:{activeUser.passingRating || 5} G:{activeUser.gkRating || 5}
+                    A:{activeUser.attackRating} D:{activeUser.defRating} P:{activeUser.passingRating || 5} G:{activeUser.gkRating || 5} IQ:{activeUser.iqRating || 5}
                   </div>
                 </div>
               </div>
