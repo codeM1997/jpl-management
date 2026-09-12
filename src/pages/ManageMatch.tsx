@@ -438,19 +438,7 @@ export const ManageMatch: React.FC = () => {
     let redNames = teamRed.map((uid, i) => `${i + 1}. ${getPlayerName(uid)}`);
     let whiteNames = teamWhite.map((uid, i) => `${i + 1}. ${getPlayerName(uid)}`);
     
-    const maxRedLen = Math.max(...redNames.map(n => n.length), 6);
-    
-    let teamLines = [];
-    const maxRows = Math.max(redNames.length, whiteNames.length);
-    for (let i = 0; i < maxRows; i++) {
-      const red = redNames[i] || '';
-      const white = whiteNames[i] || '';
-      const padding = ' '.repeat(Math.max(0, maxRedLen - red.length + 2));
-      teamLines.push(`${red}${padding}| ${white}`);
-    }
-
-    const titlePadding = ' '.repeat(Math.max(0, maxRedLen - 7 + 2));
-    const text = `🔥 *Match Teams are SET!* 🔥\n\n📅 ${d}  |  ⏰ ${timeAMPM}\n📍 ${match.venue}\n🗺️ Map: ${match.mapsLink}\n\n🔴 *RED*${titlePadding}| ⚪ *WHITE*\n${teamLines.join('\n')}\n\nSee you on the pitch! ⚽`;
+    const text = `🔥 *Match Teams are SET!* 🔥\n\n📅 ${d}  |  ⏰ ${timeAMPM}\n📍 ${match.venue}\n🗺️ Map: ${match.mapsLink}\n\n🔴 *TEAM RED*\n${redNames.join('\n')}\n\n⚪ *TEAM WHITE*\n${whiteNames.join('\n')}\n\nSee you on the pitch! ⚽`;
 
     navigator.clipboard.writeText(text).then(() => {
       alert("Teams copied to clipboard! Paste this into your WhatsApp group.");
