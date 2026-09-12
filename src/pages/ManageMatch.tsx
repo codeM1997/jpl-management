@@ -7,7 +7,7 @@ import { Navbar } from '../components/Navbar';
 import { DndContext, pointerWithin, KeyboardSensor, PointerSensor, useSensor, useSensors, DragOverlay, type DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ArrowLeft, Users, Shield, Save, X, PlusCircle, Share2 } from 'lucide-react';
+import { ArrowLeft, Users, Shield, Save, X, PlusCircle, Share2, Sparkles } from 'lucide-react';
 
 // --- Sortable Player Item Component ---
 interface SortablePlayerProps {
@@ -324,6 +324,59 @@ export const ManageMatch: React.FC = () => {
     setUnassigned([...match.roster]); // Bring everyone back to unassigned
   };
 
+  const handleAutoGenerate = () => {
+    if (!match) return;
+
+    // Gather all players from all pools
+    const allPlayers = [...unassigned, ...teamRed, ...teamWhite];
+
+    if (allPlayers.length < 2) {
+      alert('Need at least 2 players to generate teams.');
+      return;
+    }
+
+    // Calculate overall score for each player: A + D + P + G + IQ
+    const getScore = (uid: string) => {
+      const p = players[uid];
+      if (!p) return 0;
+      return (p.attackRating || 0) + (p.defRating || 0) + (p.passingRating || 5) + (p.gkRating || 5) + (p.iqRating || 5);
+    };
+
+    const teamSize = Math.floor(allPlayers.length / 2);
+    const totalScore = allPlayers.reduce((sum, uid) => sum + getScore(uid), 0);
+    const targetPerTeam = totalScore / 2;
+
+    // Brute force: find the combination of teamSize players with total closest to targetPerTeam
+    let bestCombo: string[] = [];
+    let bestDiff = Infinity;
+
+    const findBest = (start: number, current: string[], currentScore: number) => {
+      if (current.length === teamSize) {
+        const diff = Math.abs(currentScore - targetPerTeam);
+        if (diff < bestDiff) {
+          bestDiff = diff;
+          bestCombo = [...current];
+        }
+        return;
+      }
+      const remaining = teamSize - current.length;
+      for (let i = start; i <= allPlayers.length - remaining; i++) {
+        current.push(allPlayers[i]);
+        findBest(i + 1, current, currentScore + getScore(allPlayers[i]));
+        current.pop();
+      }
+    };
+
+    findBest(0, [], 0);
+
+    const redSet = new Set(bestCombo);
+    const white = allPlayers.filter(uid => !redSet.has(uid));
+
+    setTeamRed(bestCombo);
+    setTeamWhite(white);
+    setUnassigned([]);
+  };
+
   const handleSave = async () => {
     if (!matchId) return;
     setSaving(true);
@@ -474,6 +527,13 @@ export const ManageMatch: React.FC = () => {
               className="flex-1 sm:flex-none bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-bold flex items-center justify-center shadow-sm transition disabled:opacity-50"
             >
               Reset Teams
+            </button>
+            <button 
+              onClick={handleAutoGenerate} 
+              disabled={isLocked}
+              className="flex-1 sm:flex-none bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-bold flex items-center justify-center gap-2 shadow-sm transition disabled:opacity-50"
+            >
+              <Sparkles className="w-4 h-4" /> Auto Balance
             </button>
             <button 
               onClick={handleSave} 
