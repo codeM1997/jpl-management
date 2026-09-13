@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { collection, addDoc, query, onSnapshot, serverTimestamp, orderBy, updateDoc, doc, deleteDoc, runTransaction } from 'firebase/firestore';
+import { collection, addDoc, query, onSnapshot, serverTimestamp, orderBy, updateDoc, doc, runTransaction } from 'firebase/firestore';
 import { db } from '../firebase';
 import type { Match } from '../types';
-import { Calendar, MapPin, Clock, Edit2, Trash2, X, PlusCircle, Share2 } from 'lucide-react';
+import { Calendar, MapPin, Clock, Edit2, Trash2, X, PlusCircle, Share2, Shield } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
@@ -26,11 +26,13 @@ export const AdminMatches: React.FC = () => {
   const [tier2Unlock, setTier2Unlock] = useState('');
   const [tier3Unlock, setTier3Unlock] = useState('');
   const [maxPlayers, setMaxPlayers] = useState(12);
+  const [pricePerPerson, setPricePerPerson] = useState<number | ''>('');
+  const [upiId, setUpiId] = useState('');
   const [youtubeLink, setYoutubeLink] = useState('');
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 60000); // Check every minute
+    const timer = setInterval(() => setNow(Date.now()), 1000); // Check every second for instant UI updates
     return () => clearInterval(timer);
   }, []);
 
@@ -100,6 +102,8 @@ export const AdminMatches: React.FC = () => {
     setYoutubeLink('');
     setDefaultTimes();
     setMaxPlayers(12);
+    setPricePerPerson('');
+    setUpiId('');
   };
 
   const handleEditClick = (m: Match) => {
@@ -123,12 +127,29 @@ export const AdminMatches: React.FC = () => {
     setTier2Unlock(toLocalFormat(new Date(m.tier2UnlockTime || (m as any).tier23UnlockTime)));
     setTier3Unlock(toLocalFormat(new Date(m.tier3UnlockTime || (m as any).tier23UnlockTime)));
     setMaxPlayers(m.maxPlayers || 12);
+    setPricePerPerson(m.pricePerPerson || '');
+    setUpiId(m.upiId || '');
     
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleDelete = async (m: Match) => {
     if (window.confirm('Are you sure you want to delete this match?')) {
+      const { deleteDoc, doc } = await import('firebase/firestore');
+      
+      // Cleanup all associated screenshots before deleting the match
+      if (m.payments) {
+        for (const uid in m.payments) {
+          try {
+            if (m.payments[uid].screenshotUrl === "firestore_stored") {
+              await deleteDoc(doc(db, 'payment_proofs', `${m.id}_${uid}`));
+            }
+          } catch (e) {
+            console.error("Failed to delete proof", e);
+          }
+        }
+      }
+      
       await deleteDoc(doc(db, 'matches', m.id));
     }
   };
@@ -216,7 +237,8 @@ export const AdminMatches: React.FC = () => {
   const handleOpenTierNow = async (matchId: string, tier: 2 | 3) => {
     try {
       const field = tier === 2 ? 'tier2UnlockTime' : 'tier3UnlockTime';
-      await updateDoc(doc(db, 'matches', matchId), { [field]: new Date().toISOString() });
+      // Subtract 1 second to guarantee it is instantly recognized as "open"
+      await updateDoc(doc(db, 'matches', matchId), { [field]: new Date(Date.now() - 1000).toISOString() });
     } catch (err) {
       console.error(err);
       alert(`Failed to open for Tier ${tier}.`);
@@ -290,6 +312,8 @@ export const AdminMatches: React.FC = () => {
         tier2UnlockTime: new Date(tier2Unlock).toISOString(),
         tier3UnlockTime: new Date(tier3Unlock).toISOString(),
         maxPlayers,
+        pricePerPerson: pricePerPerson === '' ? null : Number(pricePerPerson),
+        upiId: upiId.trim(),
         youtubeLink: youtubeLink.trim()
       };
 
@@ -383,6 +407,17 @@ export const AdminMatches: React.FC = () => {
                 </select>
               )}
             </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Price per Person (₹)</label>
+              <input type="number" placeholder="e.g. 150" min="0" value={pricePerPerson} onChange={e => setPricePerPerson(e.target.value === '' ? '' : parseInt(e.target.value))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-emerald-500 focus:border-emerald-500" />
+            </div>
+            <div className="lg:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Admin UPI ID (for receiving payments)</label>
+              <input type="text" placeholder="e.g. yourname@okbank" value={upiId} onChange={e => setUpiId(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-emerald-500 focus:border-emerald-500" />
+            </div>
             
             <div className="lg:col-span-3">
               <label className="block text-sm font-medium text-gray-700 mb-1">YouTube Highlights Link (Optional)</label>
@@ -463,12 +498,40 @@ export const AdminMatches: React.FC = () => {
                           }
                         }} 
                         disabled={now < new Date(`${match.date}T${match.time}`).getTime() + 60 * 60 * 1000}
-                        className="p-2 bg-purple-50 hover:bg-purple-100 disabled:opacity-50 disabled:cursor-not-allowed text-purple-700 rounded-lg text-xs font-bold transition" 
+                        className="p-2 bg-purple-50 hover:bg-purple-100 disabled:opacity-50 disabled:cursor-not-allowed text-purple-700 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1" 
                         title="Mark as Completed (Unlocks 1 hr after kickoff)"
                       >
                         Complete
                       </button>
                     )}
+                    
+                    {match.payments && Object.keys(match.payments).length > 0 && (
+                      <button 
+                        onClick={async () => {
+                          if (window.confirm("Are you sure? This will permanently delete all uploaded payment screenshots for this match to save database space. (Player 'Paid' status will remain intact)")) {
+                            const { deleteDoc, doc } = await import('firebase/firestore');
+                            let count = 0;
+                            for (const uid in match.payments) {
+                              try {
+                                if (match.payments[uid].screenshotUrl === "firestore_stored") {
+                                  await deleteDoc(doc(db, 'payment_proofs', `${match.id}_${uid}`));
+                                  count++;
+                                }
+                              } catch (e) {
+                                console.error("Failed to delete proof", e);
+                              }
+                            }
+                            alert(`Payments settled! Successfully deleted ${count} screenshots to free up database storage.`);
+                          }
+                        }} 
+                        className="p-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1" 
+                        title="Delete all screenshot files to save space"
+                      >
+                        <Shield className="w-4 h-4" />
+                        Settle Payments
+                      </button>
+                    )}
+                    
                     <button onClick={() => handleShare(match)} className="p-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg" title="Share via WhatsApp">
                       <Share2 className="w-4 h-4" />
                     </button>

@@ -5,6 +5,7 @@ import { collection, query, orderBy, onSnapshot, doc, runTransaction, where, get
 import { db } from '../firebase';
 import type { Match } from '../types';
 import { Calendar, MapPin, Clock, CheckCircle, AlertCircle, XCircle } from 'lucide-react';
+import { PaymentModal } from '../components/PaymentModal';
 
 export const PlayerDashboard: React.FC = () => {
   const { userData } = useAuth();
@@ -13,6 +14,8 @@ export const PlayerDashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(Date.now());
   const [teamNames, setTeamNames] = useState<Record<string, string>>({});
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [pendingIntent, setPendingIntent] = useState<'in' | 'out' | null>(null);
 
   useEffect(() => {
     // Update current time every second for precise unlock logic
@@ -77,11 +80,18 @@ export const PlayerDashboard: React.FC = () => {
     fetchNames();
   }, [upcomingMatch?.status, upcomingMatch?.teamRed, upcomingMatch?.teamWhite]);
 
-  const handleRSVP = async (intent: 'in' | 'out') => {
+  const handleRSVP = async (intent: 'in' | 'out', screenshotUrl?: string) => {
     if (!upcomingMatch || !userData) return;
 
     const matchRef = doc(db, 'matches', upcomingMatch.id);
     const maxPlayers = upcomingMatch.maxPlayers || 12;
+
+    // Check if payment is required
+    if (intent === 'in' && !screenshotUrl && upcomingMatch.pricePerPerson && userData.tier !== 1 && upcomingMatch.roster.length < maxPlayers) {
+      setPendingIntent('in');
+      setShowPaymentModal(true);
+      return;
+    }
 
     try {
       await runTransaction(db, async (transaction) => {
@@ -129,9 +139,26 @@ export const PlayerDashboard: React.FC = () => {
           waitlist = waitlist.filter(id => id !== userData.uid);
         }
 
-        transaction.update(matchRef, { roster, waitlist });
+        const updateData: any = { roster, waitlist };
+        if (screenshotUrl) {
+          const currentPayments = data.payments || {};
+          updateData.payments = {
+            ...currentPayments,
+            [userData.uid]: {
+              screenshotUrl,
+              verified: false,
+              uploadedAt: new Date().toISOString()
+            }
+          };
+        }
+
+        transaction.update(matchRef, updateData);
       });
 
+      if (screenshotUrl) {
+        setShowPaymentModal(false);
+        setPendingIntent(null);
+      }
     } catch (err) {
       console.error("RSVP Transaction failed:", err);
       alert("Failed to process RSVP. Please try again.");
@@ -357,6 +384,18 @@ export const PlayerDashboard: React.FC = () => {
       
       <main className="flex-grow max-w-4xl w-full mx-auto p-4 sm:p-6 lg:p-8">
         {renderUpcomingMatch()}
+
+        {showPaymentModal && upcomingMatch && (
+          <PaymentModal
+            match={upcomingMatch}
+            userId={userData!.uid}
+            onClose={() => {
+              setShowPaymentModal(false);
+              setPendingIntent(null);
+            }}
+            onSuccess={(url) => handleRSVP(pendingIntent!, url)}
+          />
+        )}
 
         {/* History Section */}
         {historyMatches.length > 0 && (

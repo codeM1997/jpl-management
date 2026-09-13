@@ -1,5 +1,7 @@
 # Agent Workflow & Steering Guidelines
 
+**CRITICAL RULE:** The user wants all solutions to be 100% FREE. If an implementation option involves a paid service (or requires a credit card, like Firebase Blaze plan), you MUST highlight it as a "Paid Option". Always prioritize and present 100% free alternatives (e.g., clever workarounds, free-tier third-party services) for the user to choose from.
+
 Whenever the user requests a feature, enhancement, or bug fix, you MUST follow this strict step-by-step workflow. Do NOT skip steps or combine them.
 
 ### Step 1: Acknowledge & Propose

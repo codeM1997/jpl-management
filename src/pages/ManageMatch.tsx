@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { doc, onSnapshot, updateDoc, getDocs, collection, query, where } from 'firebase/firestore';
+import { doc, getDocs, updateDoc, collection, query, where, onSnapshot, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import type { Match, AppUser, Position } from '../types';
 import { Navbar } from '../components/Navbar';
@@ -8,6 +8,7 @@ import { DndContext, pointerWithin, KeyboardSensor, PointerSensor, useSensor, us
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { ArrowLeft, Users, Shield, Save, X, PlusCircle, Share2, Sparkles } from 'lucide-react';
+import { PaymentProofImage } from '../components/PaymentProofImage';
 
 // --- Sortable Player Item Component ---
 interface SortablePlayerProps {
@@ -15,10 +16,11 @@ interface SortablePlayerProps {
   disabled?: boolean;
   onRemove?: (uid: string) => void;
   isPaid?: boolean;
+  paymentStatus?: 'paid' | 'pending' | 'unpaid';
   onTogglePaid?: (uid: string) => void;
 }
 
-const SortablePlayer: React.FC<SortablePlayerProps> = ({ user, disabled, onRemove, isPaid, onTogglePaid }) => {
+const SortablePlayer: React.FC<SortablePlayerProps> = ({ user, disabled, onRemove, paymentStatus }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: user.uid, disabled });
   
   const style = {
@@ -50,18 +52,18 @@ const SortablePlayer: React.FC<SortablePlayerProps> = ({ user, disabled, onRemov
         </div>
       </div>
       <div className="flex items-center gap-1.5">
-        {onTogglePaid && (
-          <button 
-            onClick={() => onTogglePaid(user.uid)}
-            className={`px-2 py-0.5 rounded text-xs font-black border transition-colors ${
-              isPaid 
-                ? 'bg-emerald-100 text-emerald-700 border-emerald-200 hover:bg-emerald-200' 
-                : 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100'
+        {paymentStatus && (
+          <span 
+            className={`px-2 py-0.5 rounded text-[10px] font-black border uppercase ${
+              paymentStatus === 'paid'
+                ? 'bg-emerald-100 text-emerald-700 border-emerald-200' 
+                : paymentStatus === 'pending'
+                ? 'bg-amber-100 text-amber-700 border-amber-200'
+                : 'bg-red-50 text-red-600 border-red-200'
             }`}
-            title="Toggle Payment Status"
           >
-            {isPaid ? '✓ PAID' : 'UNPAID'}
-          </button>
+            {paymentStatus === 'paid' ? '✓ PAID' : paymentStatus === 'pending' ? '⌛ PENDING' : 'UNPAID'}
+          </span>
         )}
         {!disabled && onRemove && (
           <button onClick={() => onRemove(user.uid)} className="p-1 text-red-500 hover:bg-red-50 rounded" title="Remove from Match">
@@ -208,6 +210,11 @@ export const ManageMatch: React.FC = () => {
             }
             dndInitialized.current = true;
           }
+        } else {
+          if (!dndInitialized.current) {
+            setUnassigned([]);
+            dndInitialized.current = true;
+          }
         }
       }
     });
@@ -218,31 +225,13 @@ export const ManageMatch: React.FC = () => {
   useEffect(() => {
     if (!match || !dndInitialized.current) return;
     
-    // We use functional state updates to safely read the latest DND arrays without dependency loops
-    setUnassigned(prevUnassigned => {
-      let isUpdated = false;
-      let newUnassigned = [...prevUnassigned];
-      
-      // We need to check teamRed and teamWhite to know if a player is truly unassigned.
-      // Since we can't easily read them here without stale state, we'll sync using the last known arrays.
-      // A safe trick is to just add any ID from match.roster that doesn't exist in ANY of the 3 arrays.
-      setTeamRed(prevRed => {
-        setTeamWhite(prevWhite => {
-          const existing = new Set([...newUnassigned, ...prevRed, ...prevWhite]);
-          match.roster.forEach(uid => {
-            if (!existing.has(uid)) {
-              newUnassigned.push(uid);
-              isUpdated = true;
-            }
-          });
-          return prevWhite;
-        });
-        return prevRed;
-      });
-      
-      return isUpdated ? newUnassigned : prevUnassigned;
-    });
-  }, [match?.roster]);
+    const currentlyTracked = new Set([...unassigned, ...teamRed, ...teamWhite]);
+    const missingPlayers = match.roster.filter(uid => !currentlyTracked.has(uid));
+    
+    if (missingPlayers.length > 0) {
+      setUnassigned(prev => [...prev, ...missingPlayers]);
+    }
+  }, [match?.roster, unassigned, teamRed, teamWhite]);
 
   const handleDragStart = (event: any) => {
     setActiveId(event.active.id);
@@ -476,10 +465,23 @@ export const ManageMatch: React.FC = () => {
     if (!window.confirm(`Are you sure you want to remove this player from the roster?`)) return;
     try {
       const newRoster = match.roster.filter(id => id !== uid);
-      await updateDoc(doc(db, 'matches', matchId), { roster: newRoster });
+      
+      const newPayments = { ...match.payments };
+      if (newPayments[uid]) {
+        delete newPayments[uid];
+      }
+      
+      await updateDoc(doc(db, 'matches', matchId), { 
+        roster: newRoster,
+        payments: newPayments
+      });
+      
       setUnassigned(prev => prev.filter(id => id !== uid));
       setTeamRed(prev => prev.filter(id => id !== uid));
       setTeamWhite(prev => prev.filter(id => id !== uid));
+      
+      // Delete the screenshot from Firestore
+      await deleteDoc(doc(db, 'payment_proofs', `${matchId}_${uid}`));
     } catch (err) {
       console.error(err);
       alert('Failed to remove player.');
@@ -507,17 +509,66 @@ export const ManageMatch: React.FC = () => {
   const handleTogglePaid = async (uid: string) => {
     if (!match || !matchId) return;
     try {
-      const currentPaid = match.paidPlayers || [];
-      let newPaid;
-      if (currentPaid.includes(uid)) {
-        newPaid = currentPaid.filter(id => id !== uid);
+      const currentStatus = getPaymentStatus(uid);
+      const paidPlayers = match.paidPlayers || [];
+      let newPaid = [...paidPlayers];
+      let newPayments = { ...match.payments };
+      
+      if (currentStatus === 'paid') {
+        // Force to unpaid: remove from paidPlayers AND remove from payments map
+        newPaid = newPaid.filter(id => id !== uid);
+        delete newPayments[uid];
       } else {
-        newPaid = [...currentPaid, uid];
+        // Force to paid: add to paidPlayers (which overrides everything else)
+        if (!newPaid.includes(uid)) {
+          newPaid.push(uid);
+        }
       }
-      await updateDoc(doc(db, 'matches', matchId), { paidPlayers: newPaid });
+      
+      await updateDoc(doc(db, 'matches', matchId), { 
+        paidPlayers: newPaid,
+        payments: newPayments
+      });
     } catch (err) {
       console.error(err);
       alert('Failed to update payment status.');
+    }
+  };
+
+  const handleVerifyPayment = async (uid: string) => {
+    if (!match || !matchId) return;
+    try {
+      const currentPayments = match.payments || {};
+      const newPayments = {
+        ...currentPayments,
+        [uid]: { ...currentPayments[uid], verified: true }
+      };
+      await updateDoc(doc(db, 'matches', matchId), { payments: newPayments });
+    } catch (err) {
+      console.error(err);
+      alert('Failed to verify payment.');
+    }
+  };
+
+  const handleRejectPayment = async (uid: string) => {
+    if (!match || !matchId) return;
+    if (!window.confirm("Reject payment and kick player from roster?")) return;
+    try {
+      const newRoster = match.roster.filter(id => id !== uid);
+      const newPayments = { ...match.payments };
+      delete newPayments[uid];
+      
+      setUnassigned(prev => prev.filter(id => id !== uid));
+      setTeamRed(prev => prev.filter(id => id !== uid));
+      setTeamWhite(prev => prev.filter(id => id !== uid));
+      
+      await updateDoc(doc(db, 'matches', matchId), { roster: newRoster, payments: newPayments });
+      
+      // Delete the screenshot from Firestore
+      await deleteDoc(doc(db, 'payment_proofs', `${matchId}_${uid}`));
+    } catch (err) {
+      console.error(err);
+      alert('Failed to reject payment.');
     }
   };
 
@@ -552,6 +603,18 @@ export const ManageMatch: React.FC = () => {
   const isLocked = match.status === 'published' || match.status === 'completed';
   const isPublished = match.status === 'published';
   const maxPlayers = match.maxPlayers || 12;
+  const getPaymentStatus = (uid: string) => {
+    if (match.paidPlayers?.includes(uid)) return 'paid';
+    const payment = match.payments?.[uid];
+    if (payment) {
+      return payment.verified ? 'paid' : 'pending';
+    }
+    return 'unpaid';
+  };
+
+  const paidCount = match.roster.filter(uid => getPaymentStatus(uid) === 'paid').length;
+  const pendingCount = match.roster.filter(uid => getPaymentStatus(uid) === 'pending').length;
+
   const canPublish = match.roster.length >= maxPlayers;
 
   return (
@@ -628,7 +691,7 @@ export const ManageMatch: React.FC = () => {
                 <span className="bg-gray-200 text-gray-700 text-xs font-bold px-2 py-1 rounded-full">{unassigned.length}</span>
               </div>
               <DroppableContainer id="unassigned" items={unassigned}>
-                {unassigned.map(uid => players[uid] ? <SortablePlayer key={uid} user={players[uid]} disabled={isLocked} onRemove={handleRemoveFromRoster} isPaid={match.paidPlayers?.includes(uid)} onTogglePaid={handleTogglePaid} /> : null)}
+                {unassigned.map(uid => players[uid] ? <SortablePlayer key={uid} user={players[uid]} disabled={isLocked} onRemove={handleRemoveFromRoster} paymentStatus={getPaymentStatus(uid)} /> : null)}
                 {unassigned.length === 0 && (
                   <div className="text-center text-gray-400 text-sm mt-8 border-2 border-dashed border-gray-300 rounded-lg py-8">
                     All players assigned.
@@ -668,7 +731,7 @@ export const ManageMatch: React.FC = () => {
                 <span className="bg-red-200 text-red-800 text-xs font-bold px-2 py-1 rounded-full">{teamRed.length}</span>
               </div>
               <DroppableContainer id="teamRed" items={teamRed}>
-                {teamRed.map(uid => players[uid] ? <SortablePlayer key={uid} user={players[uid]} disabled={isLocked} onRemove={handleRemoveFromRoster} isPaid={match.paidPlayers?.includes(uid)} onTogglePaid={handleTogglePaid} /> : null)}
+                {teamRed.map(uid => players[uid] ? <SortablePlayer key={uid} user={players[uid]} disabled={isLocked} onRemove={handleRemoveFromRoster} paymentStatus={getPaymentStatus(uid)} /> : null)}
                 {teamRed.length === 0 && (
                   <div className="text-center text-red-300 text-sm mt-8 border-2 border-dashed border-red-200 rounded-lg py-8">
                     Drag players here
@@ -686,7 +749,7 @@ export const ManageMatch: React.FC = () => {
                 <span className="bg-slate-200 text-slate-700 text-xs font-bold px-2 py-1 rounded-full">{teamWhite.length}</span>
               </div>
               <DroppableContainer id="teamWhite" items={teamWhite}>
-                {teamWhite.map(uid => players[uid] ? <SortablePlayer key={uid} user={players[uid]} disabled={isLocked} onRemove={handleRemoveFromRoster} isPaid={match.paidPlayers?.includes(uid)} onTogglePaid={handleTogglePaid} /> : null)}
+                {teamWhite.map(uid => players[uid] ? <SortablePlayer key={uid} user={players[uid]} disabled={isLocked} onRemove={handleRemoveFromRoster} paymentStatus={getPaymentStatus(uid)} /> : null)}
                 {teamWhite.length === 0 && (
                   <div className="text-center text-slate-400 text-sm mt-8 border-2 border-dashed border-slate-300 rounded-lg py-8">
                     Drag players here
@@ -731,6 +794,109 @@ export const ManageMatch: React.FC = () => {
               </div>
             </div>
           )}
+
+          {/* Payment Verification Dashboard */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                Payments Dashboard
+              </h3>
+              <div className="flex gap-4">
+                <div className="text-sm font-bold text-gray-500 bg-gray-50 px-3 py-1 rounded-lg border border-gray-200">
+                  Paid: <span className="text-emerald-600">{paidCount}</span>
+                </div>
+                <div className="text-sm font-bold text-gray-500 bg-gray-50 px-3 py-1 rounded-lg border border-gray-200">
+                  Pending: <span className="text-amber-600">{pendingCount}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              {/* Screenshots (Tier 2/3) */}
+              <div>
+                <h4 className="font-bold text-gray-700 uppercase tracking-wider text-xs mb-3">Pending Screenshot Verifications</h4>
+                <div className="space-y-3">
+                  {match.roster.filter(uid => match.payments?.[uid] && !match.payments[uid].verified).map(uid => (
+                    <div key={uid} className="flex gap-4 p-3 bg-gray-50 border border-gray-200 rounded-xl items-start">
+                      <PaymentProofImage 
+                        matchId={match.id} 
+                        userId={uid} 
+                        legacyUrl={match.payments![uid].screenshotUrl === "firestore_stored" ? undefined : match.payments![uid].screenshotUrl} 
+                      />
+                      <div className="flex-grow">
+                        <div className="font-bold text-gray-900 mb-1">{players[uid]?.name || uid}</div>
+                        <div className="text-xs text-gray-500 mb-3">Uploaded: {new Date(match.payments![uid].uploadedAt).toLocaleString()}</div>
+                        <div className="flex gap-2">
+                          <button onClick={() => handleVerifyPayment(uid)} className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-1.5 rounded text-xs transition">Verify (Approve)</button>
+                          <button onClick={() => handleRejectPayment(uid)} className="flex-1 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-bold py-1.5 rounded text-xs transition">Reject & Kick</button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {match.roster.filter(uid => match.payments?.[uid] && !match.payments[uid].verified).length === 0 && (
+                    <p className="text-sm text-gray-500 italic">No pending verifications.</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Manual Override (Tier 1 & Cash) */}
+              <div>
+                <h4 className="font-bold text-gray-700 uppercase tracking-wider text-xs mb-3">Manual Payment Control</h4>
+                <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm max-h-96 overflow-y-auto">
+                  <table className="w-full text-sm text-left">
+                    <thead className="bg-gray-50 text-xs font-bold text-gray-500 uppercase">
+                      <tr>
+                        <th className="px-4 py-2 border-b">Player</th>
+                        <th className="px-4 py-2 border-b text-center">Proof</th>
+                        <th className="px-4 py-2 border-b text-center">Status</th>
+                        <th className="px-4 py-2 border-b text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {match.roster.map(uid => {
+                        const status = getPaymentStatus(uid);
+                        return (
+                          <tr key={uid}>
+                            <td className="px-4 py-3 font-medium text-gray-900">
+                              {players[uid]?.name || uid}
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              {match.payments?.[uid]?.screenshotUrl ? (
+                                <PaymentProofImage 
+                                  matchId={match.id} 
+                                  userId={uid} 
+                                  small 
+                                  legacyUrl={match.payments[uid].screenshotUrl === "firestore_stored" ? undefined : match.payments[uid].screenshotUrl}
+                                />
+                              ) : (
+                                <span className="text-gray-300">-</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-black border uppercase ${
+                                status === 'paid' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 
+                                status === 'pending' ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-red-50 text-red-600 border-red-200'
+                              }`}>
+                                {status}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <button 
+                                onClick={() => handleTogglePaid(uid)}
+                                className="text-xs font-bold px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded text-gray-700 transition"
+                              >
+                                Toggle
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
 
           {/* Drag Overlay for smooth animations */}
           <DragOverlay>
