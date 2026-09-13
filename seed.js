@@ -1,68 +1,97 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore, doc, setDoc, collection, getDocs, query, orderBy, limit, updateDoc } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, collection, addDoc } from 'firebase/firestore';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDCaA2JSvVWcXkRZBPPJS5FTlUkkTO-8iE",
-  authDomain: "football-organizer-7a1ae.firebaseapp.com",
-  projectId: "football-organizer-7a1ae",
-  storageBucket: "football-organizer-7a1ae.firebasestorage.app",
-  messagingSenderId: "1001772577694",
-  appId: "1:1001772577694:web:8149d63860441e94e79c8f"
+  apiKey: "AIzaSyAqYIS3jxaMEyN9_ASUtbINRRmQYTD7BKc",
+  authDomain: "jpl-management-staging.firebaseapp.com",
+  projectId: "jpl-management-staging",
+  storageBucket: "jpl-management-staging.firebasestorage.app",
+  messagingSenderId: "750515853108",
+  appId: "1:750515853108:web:9c61291daaf84959b1b761"
 };
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-const POSITIONS = ['GK', 'DEF', 'MID', 'ST'];
-const NAMES = ['Alex', 'Brian', 'Charlie', 'David', 'Evan', 'Frank', 'George', 'Harry', 'Ian', 'Jack', 'Kevin', 'Liam', 'Mike', 'Noah', 'Oscar'];
+// 13 realistic test players with all 5 ratings
+const PLAYERS = [
+  { name: 'Arjun Mehta',     tier: 1, preferredPos: ['GK'],        attack: 3, def: 6, passing: 5, gk: 9, iq: 6 },
+  { name: 'Rohan Sharma',    tier: 1, preferredPos: ['ST'],        attack: 9, def: 3, passing: 6, gk: 2, iq: 7 },
+  { name: 'Vikram Singh',    tier: 1, preferredPos: ['DEF'],       attack: 4, def: 9, passing: 6, gk: 4, iq: 7 },
+  { name: 'Karan Patel',     tier: 1, preferredPos: ['MID'],       attack: 7, def: 5, passing: 8, gk: 3, iq: 8 },
+  { name: 'Aman Gupta',      tier: 1, preferredPos: ['ST', 'MID'], attack: 8, def: 4, passing: 7, gk: 2, iq: 6 },
+  { name: 'Nikhil Joshi',    tier: 1, preferredPos: ['DEF', 'MID'],attack: 5, def: 8, passing: 7, gk: 5, iq: 7 },
+  { name: 'Saurabh Yadav',   tier: 2, preferredPos: ['MID'],       attack: 6, def: 6, passing: 8, gk: 3, iq: 9 },
+  { name: 'Prateek Verma',   tier: 2, preferredPos: ['ST'],        attack: 8, def: 3, passing: 5, gk: 2, iq: 5 },
+  { name: 'Deepak Kumar',    tier: 2, preferredPos: ['DEF'],       attack: 3, def: 7, passing: 5, gk: 6, iq: 6 },
+  { name: 'Rahul Tiwari',    tier: 1, preferredPos: ['MID', 'ST'], attack: 7, def: 5, passing: 9, gk: 3, iq: 8 },
+  { name: 'Aditya Chauhan',  tier: 2, preferredPos: ['DEF', 'MID'],attack: 5, def: 7, passing: 6, gk: 4, iq: 6 },
+  { name: 'Manish Dubey',    tier: 2, preferredPos: ['MID'],       attack: 6, def: 5, passing: 7, gk: 3, iq: 7 },
+  { name: 'Tushar Saxena',   tier: 3, preferredPos: ['ST', 'MID'], attack: 7, def: 4, passing: 6, gk: 2, iq: 5 },
+];
 
 async function seed() {
-  console.log("Seeding 13 test players...");
-  
+  console.log("🌱 Seeding 13 test players with full ratings...\n");
+
   const generatedUids = [];
 
   // 1. Create 13 users
-  for (let i = 0; i < 13; i++) {
+  for (let i = 0; i < PLAYERS.length; i++) {
+    const p = PLAYERS[i];
     const uid = `test_user_${Date.now()}_${i}`;
     generatedUids.push(uid);
-    
+
     await setDoc(doc(db, 'users', uid), {
       uid: uid,
-      name: `${NAMES[i]} (Test)`,
-      email: `test${i}@example.com`,
-      phone: `55500000${i.toString().padStart(2, '0')}`,
+      name: p.name,
+      email: `${p.name.split(' ')[0].toLowerCase()}@test.com`,
+      phone: `99900${i.toString().padStart(5, '0')}`,
       role: 'player',
-      tier: 1, // Make them tier 1 so they are active
-      preferredPos: POSITIONS[i % 4],
-      attackRating: Math.floor(Math.random() * 5) + 5, // 5-9
-      defRating: Math.floor(Math.random() * 5) + 5,
+      tier: p.tier,
+      preferredPos: p.preferredPos,
+      attackRating: p.attack,
+      defRating: p.def,
+      passingRating: p.passing,
+      gkRating: p.gk,
+      iqRating: p.iq,
       createdAt: new Date()
     });
-    console.log(`Created user: ${NAMES[i]} (${uid})`);
+    console.log(`  ✅ ${p.name}  [${p.preferredPos.join('/')}]  A:${p.attack} D:${p.def} P:${p.passing} G:${p.gk} IQ:${p.iq}`);
   }
 
-  // 2. Add them to the latest match
-  console.log("\nFetching latest match...");
-  const q = query(collection(db, 'matches'), orderBy('createdAt', 'desc'), limit(1));
-  const snapshot = await getDocs(q);
-  
-  if (snapshot.empty) {
-    console.log("No match found. Please create a match first.");
-    return;
-  }
+  // 2. Create a new match with 12 players on roster and 1 on waitlist
+  console.log("\n⚽ Creating a test match...\n");
 
-  const matchDoc = snapshot.docs[0];
-  console.log(`Found match: ${matchDoc.id}`);
+  const matchDate = new Date();
+  matchDate.setDate(matchDate.getDate() + 3); // 3 days from now
+  const dateStr = matchDate.toISOString().split('T')[0]; // YYYY-MM-DD
 
-  const roster = generatedUids.slice(0, 12);
-  const waitlist = generatedUids.slice(12, 13); // The 13th player
+  const now = new Date();
+  const matchData = {
+    date: dateStr,
+    time: '17:30',
+    venue: 'ClayGrounds, IMS Noida College, Sec 62, Noida',
+    mapsLink: 'https://maps.app.goo.gl/bQPqSpkue37sBc1u8',
+    tier1UnlockTime: now.toISOString(),
+    tier2UnlockTime: now.toISOString(),
+    tier3UnlockTime: now.toISOString(),
+    maxPlayers: 12,
+    status: 'active',
+    roster: generatedUids.slice(0, 12),
+    waitlist: generatedUids.slice(12, 13),
+    teamRed: [],
+    teamWhite: [],
+    paidPlayers: [],
+    createdAt: new Date()
+  };
 
-  await updateDoc(doc(db, 'matches', matchDoc.id), {
-    roster: roster,
-    waitlist: waitlist
-  });
+  const matchRef = await addDoc(collection(db, 'matches'), matchData);
+  console.log(`  ✅ Match created: ${matchRef.id}`);
+  console.log(`  📅 Date: ${dateStr} at 17:30`);
+  console.log(`  📍 Venue: ${matchData.venue}`);
+  console.log(`  👥 Roster: 12 players  |  Waitlist: 1 player`);
 
-  console.log(`\nSuccessfully added 12 players to the Roster and 1 to the Waitlist!`);
+  console.log("\n🎉 Seeding complete!");
   process.exit(0);
 }
 

@@ -335,34 +335,78 @@ export const ManageMatch: React.FC = () => {
       return;
     }
 
-    // Calculate overall score for each player: A + D + P + G + IQ
+    // Outfield score only (GK rating excluded): A + D + P + IQ
     const getScore = (uid: string) => {
       const p = players[uid];
       if (!p) return 0;
-      return (p.attackRating || 0) + (p.defRating || 0) + (p.passingRating || 5) + (p.gkRating || 5) + (p.iqRating || 5);
+      return (p.attackRating || 0) + (p.defRating || 0) + (p.passingRating || 5) + (p.iqRating || 5);
     };
 
-    const teamSize = Math.floor(allPlayers.length / 2);
-    const totalScore = allPlayers.reduce((sum, uid) => sum + getScore(uid), 0);
-    const targetPerTeam = totalScore / 2;
+    // --- Phase 1: Lock dedicated GKs ---
+    const dedicatedGKs = allPlayers.filter(uid => {
+      const p = players[uid];
+      return p && Array.isArray(p.preferredPos) && p.preferredPos.includes('GK' as Position);
+    });
 
-    // Brute force: find the combination of teamSize players with total closest to targetPerTeam
+    let lockedRed: string[] = [];
+    let lockedWhite: string[] = [];
+    let remaining = [...allPlayers];
+
+    if (dedicatedGKs.length >= 2) {
+      // Distribute one dedicated GK per team
+      lockedRed.push(dedicatedGKs[0]);
+      lockedWhite.push(dedicatedGKs[1]);
+      remaining = remaining.filter(uid => uid !== dedicatedGKs[0] && uid !== dedicatedGKs[1]);
+    } else if (dedicatedGKs.length === 1) {
+      // Only one dedicated GK → assign to Red
+      lockedRed.push(dedicatedGKs[0]);
+      remaining = remaining.filter(uid => uid !== dedicatedGKs[0]);
+
+      // White needs a fallback: pick the player with the highest GK rating from remaining
+      if (remaining.length > 0) {
+        const bestFallback = remaining.reduce((best, uid) =>
+          (players[uid]?.gkRating || 5) > (players[best]?.gkRating || 5) ? uid : best
+        );
+        lockedWhite.push(bestFallback);
+        remaining = remaining.filter(uid => uid !== bestFallback);
+      }
+    }
+    // If 0 dedicated GKs → symmetric situation, no locking needed
+
+    // --- Phase 2: Brute-force balance remaining using A + D + P + IQ ---
+    const teamSize = Math.floor(allPlayers.length / 2);
+    const redToFill = teamSize - lockedRed.length;
+
+    if (redToFill <= 0) {
+      // Edge case: locked players already fill the team
+      setTeamRed(lockedRed.slice(0, teamSize));
+      setTeamWhite([...lockedWhite, ...remaining]);
+      setUnassigned([]);
+      return;
+    }
+
+    const lockedRedScore = lockedRed.reduce((sum, uid) => sum + getScore(uid), 0);
+    const lockedWhiteScore = lockedWhite.reduce((sum, uid) => sum + getScore(uid), 0);
+    const remainingTotal = remaining.reduce((sum, uid) => sum + getScore(uid), 0);
+    const totalScore = lockedRedScore + lockedWhiteScore + remainingTotal;
+    const targetRedFromRemaining = (totalScore / 2) - lockedRedScore;
+
     let bestCombo: string[] = [];
     let bestDiff = Infinity;
 
     const findBest = (start: number, current: string[], currentScore: number) => {
-      if (current.length === teamSize) {
-        const diff = Math.abs(currentScore - targetPerTeam);
+      if (current.length === redToFill) {
+        const diff = Math.abs(currentScore - targetRedFromRemaining);
         if (diff < bestDiff) {
           bestDiff = diff;
           bestCombo = [...current];
         }
         return;
       }
-      const remaining = teamSize - current.length;
-      for (let i = start; i <= allPlayers.length - remaining; i++) {
-        current.push(allPlayers[i]);
-        findBest(i + 1, current, currentScore + getScore(allPlayers[i]));
+      const needed = redToFill - current.length;
+      for (let i = start; i <= remaining.length - needed; i++) {
+        current.push(remaining[i]);
+        findBest(i + 1, current, currentScore + getScore(remaining[i]));
         current.pop();
       }
     };
@@ -370,10 +414,10 @@ export const ManageMatch: React.FC = () => {
     findBest(0, [], 0);
 
     const redSet = new Set(bestCombo);
-    const white = allPlayers.filter(uid => !redSet.has(uid));
+    const whiteFromRemaining = remaining.filter(uid => !redSet.has(uid));
 
-    setTeamRed(bestCombo);
-    setTeamWhite(white);
+    setTeamRed([...lockedRed, ...bestCombo]);
+    setTeamWhite([...lockedWhite, ...whiteFromRemaining]);
     setUnassigned([]);
   };
 
@@ -520,7 +564,7 @@ export const ManageMatch: React.FC = () => {
             <ArrowLeft className="w-5 h-5 mr-1" /> Back to Dashboard
           </button>
           
-          <div className="flex gap-2 w-full sm:w-auto">
+          <div className="flex flex-wrap gap-2 w-full sm:w-auto">
             <button 
               onClick={handleReset} 
               disabled={isLocked}
