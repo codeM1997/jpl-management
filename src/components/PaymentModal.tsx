@@ -17,9 +17,6 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ match, userId, onClo
   const price = match.pricePerPerson || 0;
   const upiId = match.upiId || '';
 
-  // Generate UPI Deep Links
-  const upiUrl = `upi://pay?pa=${upiId}&pn=MatchOrganizer&am=${price}&cu=INR&tn=FootballMatch`;
-
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -72,8 +69,6 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ match, userId, onClo
     }
   };
 
-  // Detect iOS to hide the generic UPI button (since iOS doesn't handle the generic intent well)
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
@@ -92,35 +87,22 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ match, userId, onClo
             <div className="text-5xl font-black text-gray-900">₹{price}</div>
           </div>
 
-          <div className="space-y-3 mb-6">
-            <p className="text-sm font-bold text-gray-700 uppercase tracking-wider mb-2">1. Pay via UPI</p>
-            
-            {!isIOS && (
-              <a 
-                href={upiUrl}
-                className="w-full flex items-center justify-center gap-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 font-bold py-3 px-4 rounded-xl transition"
+          <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-6 text-center">
+            <p className="text-sm font-bold text-gray-700 uppercase tracking-wider mb-2">1. Send Payment To</p>
+            <div className="flex items-center justify-center gap-2 mb-2">
+              <span className="text-xl md:text-2xl font-black text-emerald-700 select-all tracking-wide">{upiId}</span>
+              <button 
+                onClick={() => {
+                  navigator.clipboard.writeText(upiId);
+                  alert("UPI ID copied to clipboard!");
+                }}
+                className="p-2 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded-lg transition"
+                title="Copy UPI ID"
               >
-                Pay via any UPI App
-              </a>
-            )}
-            
-            <div className="flex gap-2">
-              <a 
-                href={`gpay://upi/pay?pa=${upiId}&pn=MatchOrganizer&am=${price}&cu=INR&tn=FootballMatch`}
-                className="flex-1 flex items-center justify-center bg-gray-50 border border-gray-200 hover:bg-gray-100 text-gray-700 font-bold py-2 rounded-lg transition"
-              >
-                GPay
-              </a>
-              <a 
-                href={`phonepe://pay?pa=${upiId}&pn=MatchOrganizer&am=${price}&cu=INR&tn=FootballMatch`}
-                className="flex-1 flex items-center justify-center bg-purple-50 border border-purple-200 hover:bg-purple-100 text-purple-700 font-bold py-2 rounded-lg transition"
-              >
-                PhonePe
-              </a>
+                Copy
+              </button>
             </div>
-            <div className="text-center mt-2">
-              <p className="text-xs text-gray-500">Or manually pay to: <span className="font-bold text-gray-800 select-all">{upiId}</span></p>
-            </div>
+            <p className="text-xs text-gray-500 font-medium">Open any UPI app (GPay, PhonePe, Paytm) and send exactly <span className="font-bold text-gray-800">₹{price}</span></p>
           </div>
 
           <div className="mb-6">
