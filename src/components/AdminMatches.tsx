@@ -27,6 +27,7 @@ export const AdminMatches: React.FC = () => {
   const [tier3Unlock, setTier3Unlock] = useState('');
   const [maxPlayers, setMaxPlayers] = useState(12);
   const [pricePerPerson, setPricePerPerson] = useState<number | ''>('');
+  const [requirePaymentTier23, setRequirePaymentTier23] = useState(false);
   const [upiId, setUpiId] = useState('');
   const [youtubeLink, setYoutubeLink] = useState('');
   const [now, setNow] = useState(Date.now());
@@ -103,6 +104,7 @@ export const AdminMatches: React.FC = () => {
     setDefaultTimes();
     setMaxPlayers(12);
     setPricePerPerson('');
+    setRequirePaymentTier23(false);
     setUpiId('');
   };
 
@@ -128,6 +130,7 @@ export const AdminMatches: React.FC = () => {
     setTier3Unlock(toLocalFormat(new Date(m.tier3UnlockTime || (m as any).tier23UnlockTime)));
     setMaxPlayers(m.maxPlayers || 12);
     setPricePerPerson(m.pricePerPerson || '');
+    setRequirePaymentTier23(m.requirePaymentTier23 || false);
     setUpiId(m.upiId || '');
     
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -161,8 +164,9 @@ export const AdminMatches: React.FC = () => {
     const ampm = hours >= 12 ? 'PM' : 'AM';
     const hrs12 = hours % 12 || 12;
     const timeAMPM = `${hrs12}:${min} ${ampm}`;
+    const priceStr = m.pricePerPerson ? `\n💵 Price: ₹${m.pricePerPerson}` : '';
 
-    const text = `⚽ *New Football Match!* ⚽\n\n📅 Date: ${d}\n⏰ Time: ${timeAMPM}\n📍 Venue: ${m.venue}\n\n👉 *RSVP Now:* ${window.location.origin}\n_(Tap the link to join the roster)_`;
+    const text = `⚽ *New Football Match!* ⚽\n\n📅 Date: ${d}\n⏰ Time: ${timeAMPM}\n📍 Venue: ${m.venue}${priceStr}\n\n👉 *RSVP Now:* ${window.location.origin}\n_(Tap the link to join the roster)_`;
     
     // Copy to clipboard
     navigator.clipboard.writeText(text).then(() => {
@@ -313,6 +317,7 @@ export const AdminMatches: React.FC = () => {
         tier3UnlockTime: new Date(tier3Unlock).toISOString(),
         maxPlayers,
         pricePerPerson: pricePerPerson === '' ? null : Number(pricePerPerson),
+        requirePaymentTier23,
         upiId: upiId.trim(),
         youtubeLink: youtubeLink.trim()
       };
@@ -412,6 +417,11 @@ export const AdminMatches: React.FC = () => {
               <label className="block text-sm font-medium text-gray-700 mb-1">Price per Person (₹)</label>
               <input type="number" placeholder="e.g. 150" min="0" value={pricePerPerson} onChange={e => setPricePerPerson(e.target.value === '' ? '' : parseInt(e.target.value))}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-emerald-500 focus:border-emerald-500" />
+              
+              <label className="flex items-center mt-3 cursor-pointer">
+                <input type="checkbox" checked={requirePaymentTier23} onChange={e => setRequirePaymentTier23(e.target.checked)} className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 h-4 w-4" />
+                <span className="ml-2 text-sm text-gray-700 font-medium">Require screenshot for Tier 2/3</span>
+              </label>
             </div>
             <div className="lg:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">Admin UPI ID (for receiving payments)</label>

@@ -8,6 +8,7 @@ import { LogIn, UserPlus } from 'lucide-react';
 
 export const Login: React.FC = () => {
   const [identifier, setIdentifier] = useState('');
+  const [loginMethod, setLoginMethod] = useState<'phone' | 'email'>('phone');
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -119,20 +120,47 @@ export const Login: React.FC = () => {
               </div>
             )}
 
+            {/* Login Method Toggle */}
+            <div className="flex rounded-md shadow-sm">
+              <button
+                type="button"
+                onClick={() => { setLoginMethod('phone'); setIdentifier(''); setError(''); }}
+                className={`flex-1 py-2 text-sm font-medium rounded-l-md border ${loginMethod === 'phone' ? 'bg-emerald-50 border-emerald-500 text-emerald-700 z-10' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'}`}
+              >
+                Phone
+              </button>
+              <button
+                type="button"
+                onClick={() => { setLoginMethod('email'); setIdentifier(''); setError(''); }}
+                className={`flex-1 py-2 text-sm font-medium rounded-r-md border-t border-b border-r ${loginMethod === 'email' ? 'bg-emerald-50 border-emerald-500 text-emerald-700 z-10' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'}`}
+              >
+                Email
+              </button>
+            </div>
+
             <div>
               <label htmlFor="identifier" className="block text-sm font-medium text-gray-700">
-                Email Address or Phone Number
+                {loginMethod === 'phone' ? 'Phone Number' : 'Email Address'}
               </label>
               <div className="mt-1">
                 <input
                   id="identifier"
                   name="identifier"
-                  type="text"
+                  type={loginMethod === 'phone' ? 'tel' : 'email'}
                   required
                   value={identifier}
-                  onChange={(e) => setIdentifier(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (loginMethod === 'phone') {
+                      // Only allow digits, max 10
+                      const digits = val.replace(/\D/g, '');
+                      if (digits.length <= 10) setIdentifier(digits);
+                    } else {
+                      setIdentifier(val);
+                    }
+                  }}
                   className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm"
-                  placeholder="e.g., player@example.com or 5551234567"
+                  placeholder={loginMethod === 'phone' ? '10-digit phone number' : 'player@example.com'}
                 />
               </div>
             </div>

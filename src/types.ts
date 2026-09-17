@@ -39,6 +39,7 @@ export interface Match {
   teamWhite: string[]; // Array of UIDs
   paidPlayers?: string[]; // Legacy array of UIDs who have paid (can keep for manual cash overrides)
   pricePerPerson?: number;
+  requirePaymentTier23?: boolean;
   upiId?: string;
   payments?: {
     [uid: string]: {

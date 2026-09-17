@@ -16,6 +16,7 @@ export const PlayerDashboard: React.FC = () => {
   const [teamNames, setTeamNames] = useState<Record<string, string>>({});
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [pendingIntent, setPendingIntent] = useState<'in' | 'out' | null>(null);
+  const [isRSVPing, setIsRSVPing] = useState(false);
 
   useEffect(() => {
     // Update current time every second for precise unlock logic
@@ -87,12 +88,13 @@ export const PlayerDashboard: React.FC = () => {
     const maxPlayers = upcomingMatch.maxPlayers || 12;
 
     // Check if payment is required
-    if (intent === 'in' && !screenshotUrl && upcomingMatch.pricePerPerson && userData.tier !== 1 && upcomingMatch.roster.length < maxPlayers) {
+    if (intent === 'in' && !screenshotUrl && upcomingMatch.pricePerPerson && upcomingMatch.requirePaymentTier23 && userData.tier !== 1 && upcomingMatch.roster.length < maxPlayers) {
       setPendingIntent('in');
       setShowPaymentModal(true);
       return;
     }
 
+    setIsRSVPing(true);
     try {
       await runTransaction(db, async (transaction) => {
         const matchDoc = await transaction.get(matchRef);
@@ -162,6 +164,8 @@ export const PlayerDashboard: React.FC = () => {
     } catch (err) {
       console.error("RSVP Transaction failed:", err);
       alert("Failed to process RSVP. Please try again.");
+    } finally {
+      setIsRSVPing(false);
     }
   };
 
@@ -332,8 +336,10 @@ export const PlayerDashboard: React.FC = () => {
               <p className="text-gray-500 mb-6">See you on the pitch.</p>
               <button 
                 onClick={() => handleRSVP('out')}
-                className="w-full bg-red-50 hover:bg-red-100 text-red-600 font-bold py-3 px-4 rounded-xl transition border border-red-200"
+                disabled={isRSVPing}
+                className="w-full bg-red-50 hover:bg-red-100 disabled:opacity-50 text-red-600 font-bold py-3 px-4 rounded-xl transition border border-red-200 flex justify-center items-center gap-2"
               >
+                {isRSVPing ? <div className="w-5 h-5 border-2 border-red-600 border-t-transparent rounded-full animate-spin"></div> : null}
                 Drop Out
               </button>
             </div>
@@ -346,8 +352,10 @@ export const PlayerDashboard: React.FC = () => {
               <p className="text-gray-500 mb-6">Position: #{upcomingMatch.waitlist.indexOf(userData!.uid) + 1}</p>
               <button 
                 onClick={() => handleRSVP('out')}
-                className="w-full bg-red-50 hover:bg-red-100 text-red-600 font-bold py-3 px-4 rounded-xl transition border border-red-200"
+                disabled={isRSVPing}
+                className="w-full bg-red-50 hover:bg-red-100 disabled:opacity-50 text-red-600 font-bold py-3 px-4 rounded-xl transition border border-red-200 flex justify-center items-center gap-2"
               >
+                {isRSVPing ? <div className="w-5 h-5 border-2 border-red-600 border-t-transparent rounded-full animate-spin"></div> : null}
                 Leave Waitlist
               </button>
             </div>
@@ -356,16 +364,20 @@ export const PlayerDashboard: React.FC = () => {
               {upcomingMatch.roster.length < maxPlayers ? (
                 <button 
                   onClick={() => handleRSVP('in')}
-                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 px-4 rounded-xl shadow-lg transition flex justify-center items-center gap-2 text-lg"
+                  disabled={isRSVPing}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold py-4 px-4 rounded-xl shadow-lg transition flex justify-center items-center gap-2 text-lg"
                 >
-                  <CheckCircle className="w-6 h-6" /> I'm In
+                  {isRSVPing ? <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <CheckCircle className="w-6 h-6" />}
+                  I'm In {upcomingMatch.pricePerPerson ? `- ₹${upcomingMatch.pricePerPerson}` : ''}
                 </button>
               ) : (
                 <button 
                   onClick={() => handleRSVP('in')}
-                  className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-4 px-4 rounded-xl shadow-lg transition flex justify-center items-center gap-2 text-lg"
+                  disabled={isRSVPing}
+                  className="w-full bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white font-bold py-4 px-4 rounded-xl shadow-lg transition flex justify-center items-center gap-2 text-lg"
                 >
-                  <AlertCircle className="w-6 h-6" /> Join Waitlist
+                  {isRSVPing ? <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <AlertCircle className="w-6 h-6" />}
+                  Join Waitlist {upcomingMatch.pricePerPerson ? `- ₹${upcomingMatch.pricePerPerson}` : ''}
                 </button>
               )}
               <button className="w-full bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold py-3 px-4 rounded-xl transition flex justify-center items-center gap-2">
