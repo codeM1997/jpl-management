@@ -27,6 +27,7 @@ export const AdminMatches: React.FC = () => {
   const [tier3Unlock, setTier3Unlock] = useState('');
   const [maxPlayers, setMaxPlayers] = useState(12);
   const [pricePerPerson, setPricePerPerson] = useState<number | ''>('');
+  const [requirePaymentTier1, setRequirePaymentTier1] = useState(false);
   const [requirePaymentTier23, setRequirePaymentTier23] = useState(false);
   const [upiId, setUpiId] = useState('');
   const [youtubeLink, setYoutubeLink] = useState('');
@@ -104,6 +105,7 @@ export const AdminMatches: React.FC = () => {
     setDefaultTimes();
     setMaxPlayers(12);
     setPricePerPerson('');
+    setRequirePaymentTier1(false);
     setRequirePaymentTier23(false);
     setUpiId('');
   };
@@ -130,6 +132,7 @@ export const AdminMatches: React.FC = () => {
     setTier3Unlock(toLocalFormat(new Date(m.tier3UnlockTime || (m as any).tier23UnlockTime)));
     setMaxPlayers(m.maxPlayers || 12);
     setPricePerPerson(m.pricePerPerson || '');
+    setRequirePaymentTier1(m.requirePaymentTier1 || false);
     setRequirePaymentTier23(m.requirePaymentTier23 || false);
     setUpiId(m.upiId || '');
     
@@ -317,6 +320,7 @@ export const AdminMatches: React.FC = () => {
         tier3UnlockTime: new Date(tier3Unlock).toISOString(),
         maxPlayers,
         pricePerPerson: pricePerPerson === '' ? null : Number(pricePerPerson),
+        requirePaymentTier1,
         requirePaymentTier23,
         upiId: upiId.trim(),
         youtubeLink: youtubeLink.trim()
@@ -417,6 +421,11 @@ export const AdminMatches: React.FC = () => {
               <label className="block text-sm font-medium text-gray-700 mb-1">Price per Person (₹)</label>
               <input type="number" placeholder="e.g. 150" min="0" value={pricePerPerson} onChange={e => setPricePerPerson(e.target.value === '' ? '' : parseInt(e.target.value))}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-emerald-500 focus:border-emerald-500" />
+              
+              <label className="flex items-center mt-3 cursor-pointer">
+                <input type="checkbox" checked={requirePaymentTier1} onChange={e => setRequirePaymentTier1(e.target.checked)} className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 h-4 w-4" />
+                <span className="ml-2 text-sm text-gray-700 font-medium">Require screenshot for Tier 1</span>
+              </label>
               
               <label className="flex items-center mt-3 cursor-pointer">
                 <input type="checkbox" checked={requirePaymentTier23} onChange={e => setRequirePaymentTier23(e.target.checked)} className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 h-4 w-4" />

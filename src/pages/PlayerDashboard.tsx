@@ -89,7 +89,12 @@ export const PlayerDashboard: React.FC = () => {
 
     // Check if payment is required (only if they will join the roster)
     const willJoinRoster = upcomingMatch.roster.length < maxPlayers && upcomingMatch.status !== 'published';
-    if (intent === 'in' && !screenshotUrl && upcomingMatch.pricePerPerson && upcomingMatch.requirePaymentTier23 && userData.tier !== 1 && willJoinRoster) {
+    const isPaymentRequired = upcomingMatch.pricePerPerson && (
+      (upcomingMatch.requirePaymentTier1 && userData.tier === 1) ||
+      (upcomingMatch.requirePaymentTier23 && userData.tier !== 1)
+    );
+
+    if (intent === 'in' && !screenshotUrl && isPaymentRequired && willJoinRoster) {
       setPendingIntent('in');
       setShowPaymentModal(true);
       return;
@@ -279,6 +284,16 @@ export const PlayerDashboard: React.FC = () => {
               </div>
             </div>
           </div>
+          
+          {/* Payment Info for Roster Players */}
+          {isRoster && upcomingMatch.pricePerPerson && upcomingMatch.upiId && !upcomingMatch.payments?.[userData?.uid || ''] && (
+            <div className="bg-blue-50 border-t border-blue-200 text-blue-800 p-6 text-sm text-center">
+              <p className="font-bold mb-1 flex items-center justify-center gap-1">
+                <AlertCircle className="w-5 h-5" /> Payment Info
+              </p>
+              <p>Please pay <b>₹{upcomingMatch.pricePerPerson}</b> to <b>{upcomingMatch.upiId}</b>.</p>
+            </div>
+          )}
 
           {/* Action Area for Waitlist (Published) */}
           {!isRoster && (
@@ -370,6 +385,16 @@ export const PlayerDashboard: React.FC = () => {
               </div>
               <h3 className="text-xl font-bold text-gray-900 mb-1">You're In!</h3>
               <p className="text-gray-500 mb-6">See you on the pitch.</p>
+              
+              {upcomingMatch.pricePerPerson && upcomingMatch.upiId && !upcomingMatch.payments?.[userData?.uid || ''] && (
+                <div className="bg-blue-50 border border-blue-200 text-blue-800 p-4 rounded-xl mb-6 text-sm text-left shadow-sm">
+                  <p className="font-bold mb-1 flex items-center gap-1">
+                    <AlertCircle className="w-4 h-4" /> Payment Info
+                  </p>
+                  <p>Please pay <b>₹{upcomingMatch.pricePerPerson}</b> to <b>{upcomingMatch.upiId}</b>.</p>
+                </div>
+              )}
+
               <button 
                 onClick={() => handleRSVP('out')}
                 disabled={isRSVPing}
