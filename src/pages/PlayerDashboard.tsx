@@ -87,8 +87,9 @@ export const PlayerDashboard: React.FC = () => {
     const matchRef = doc(db, 'matches', upcomingMatch.id);
     const maxPlayers = upcomingMatch.maxPlayers || 12;
 
-    // Check if payment is required
-    if (intent === 'in' && !screenshotUrl && upcomingMatch.pricePerPerson && upcomingMatch.requirePaymentTier23 && userData.tier !== 1 && upcomingMatch.roster.length < maxPlayers) {
+    // Check if payment is required (only if they will join the roster)
+    const willJoinRoster = upcomingMatch.roster.length < maxPlayers && upcomingMatch.status !== 'published';
+    if (intent === 'in' && !screenshotUrl && upcomingMatch.pricePerPerson && upcomingMatch.requirePaymentTier23 && userData.tier !== 1 && willJoinRoster) {
       setPendingIntent('in');
       setShowPaymentModal(true);
       return;
@@ -108,7 +109,7 @@ export const PlayerDashboard: React.FC = () => {
           // If already in either list, do nothing
           if (roster.includes(userData.uid) || waitlist.includes(userData.uid)) return;
 
-          if (roster.length < maxPlayers) {
+          if (roster.length < maxPlayers && data.status !== 'published') {
             if (waitlist.length === 0) {
               roster.push(userData.uid);
             } else {
@@ -278,6 +279,41 @@ export const PlayerDashboard: React.FC = () => {
               </div>
             </div>
           </div>
+
+          {/* Action Area for Waitlist (Published) */}
+          {!isRoster && (
+            <div className="p-6 bg-white border-t border-gray-200">
+              {isWaitlist ? (
+                <div className="text-center max-w-sm mx-auto">
+                  <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-amber-100 mb-3">
+                    <AlertCircle className="w-6 h-6 text-amber-600" />
+                  </div>
+                  <h3 className="text-lg font-bold text-gray-900 mb-1">You're on the Waitlist</h3>
+                  <p className="text-gray-500 mb-4 text-sm">Position: #{upcomingMatch.waitlist.indexOf(userData!.uid) + 1}</p>
+                  <button 
+                    onClick={() => handleRSVP('out')}
+                    disabled={isRSVPing}
+                    className="w-full bg-red-50 hover:bg-red-100 disabled:opacity-50 text-red-600 font-bold py-2.5 px-4 rounded-xl transition border border-red-200 flex justify-center items-center gap-2 text-sm"
+                  >
+                    {isRSVPing ? <div className="w-4 h-4 border-2 border-red-600 border-t-transparent rounded-full animate-spin"></div> : null}
+                    Leave Waitlist
+                  </button>
+                </div>
+              ) : (
+                <div className="text-center max-w-sm mx-auto">
+                  <h3 className="text-base font-bold text-gray-900 mb-3">Teams are already published.</h3>
+                  <button 
+                    onClick={() => handleRSVP('in')}
+                    disabled={isRSVPing}
+                    className="w-full bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white font-bold py-3 px-4 rounded-xl shadow-md transition flex justify-center items-center gap-2"
+                  >
+                    {isRSVPing ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <AlertCircle className="w-5 h-5" />}
+                    Join Waitlist
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       );
     }
@@ -377,7 +413,7 @@ export const PlayerDashboard: React.FC = () => {
                   className="w-full bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white font-bold py-4 px-4 rounded-xl shadow-lg transition flex justify-center items-center gap-2 text-lg"
                 >
                   {isRSVPing ? <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <AlertCircle className="w-6 h-6" />}
-                  Join Waitlist {upcomingMatch.pricePerPerson ? `- ₹${upcomingMatch.pricePerPerson}` : ''}
+                  Join Waitlist
                 </button>
               )}
               <button className="w-full bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold py-3 px-4 rounded-xl transition flex justify-center items-center gap-2">
