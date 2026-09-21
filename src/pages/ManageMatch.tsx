@@ -674,7 +674,7 @@ export const ManageMatch: React.FC = () => {
             <p className="text-gray-500 mt-1">{new Date(match.date).toDateString()} at {match.time} • {match.venue}</p>
           </div>
           <div className="text-right">
-            <div className="text-3xl font-black text-emerald-600">{match.paidPlayers?.length || 0}<span className="text-gray-400 text-lg">/{match.roster.length}</span></div>
+            <div className="text-3xl font-black text-emerald-600">{paidCount}<span className="text-gray-400 text-lg">/{match.roster.length}</span></div>
             <div className="text-xs font-bold text-gray-500 uppercase tracking-widest">Paid</div>
           </div>
         </div>
