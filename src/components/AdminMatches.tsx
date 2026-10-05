@@ -524,21 +524,32 @@ export const AdminMatches: React.FC = () => {
                       </button>
                     )}
                     
-                    {match.payments && Object.keys(match.payments).length > 0 && (
+                    {match.payments && Object.values(match.payments).some((p: any) => p.screenshotUrl) && (
                       <button 
                         onClick={async () => {
                           if (window.confirm("Are you sure? This will permanently delete all uploaded payment screenshots for this match to save database space. (Player 'Paid' status will remain intact)")) {
-                            const { deleteDoc, doc } = await import('firebase/firestore');
+                            const { deleteDoc, doc, updateDoc } = await import('firebase/firestore');
                             let count = 0;
+                            const newPayments = { ...match.payments };
+                            let hasUpdates = false;
+                            
                             for (const uid in match.payments) {
                               try {
-                                if (match.payments[uid].screenshotUrl === "firestore_stored") {
-                                  await deleteDoc(doc(db, 'payment_proofs', `${match.id}_${uid}`));
+                                if (match.payments[uid].screenshotUrl) {
+                                  if (match.payments[uid].screenshotUrl === "firestore_stored") {
+                                    await deleteDoc(doc(db, 'payment_proofs', `${match.id}_${uid}`));
+                                  }
+                                  delete (newPayments[uid] as any).screenshotUrl;
+                                  hasUpdates = true;
                                   count++;
                                 }
                               } catch (e) {
                                 console.error("Failed to delete proof", e);
                               }
+                            }
+                            
+                            if (hasUpdates) {
+                              await updateDoc(doc(db, 'matches', match.id), { payments: newPayments });
                             }
                             alert(`Payments settled! Successfully deleted ${count} screenshots to free up database storage.`);
                           }
@@ -608,7 +619,7 @@ export const AdminMatches: React.FC = () => {
               <div className="mt-4 flex gap-2">
                 <button 
                   onClick={() => handleJoinMatch(match.id)}
-                  disabled={match.roster.includes(userData?.uid || '') || match.waitlist.includes(userData?.uid || '')}
+                  disabled={isCompleted || match.roster.includes(userData?.uid || '') || match.waitlist.includes(userData?.uid || '')}
                   className="flex-1 bg-blue-100 hover:bg-blue-200 text-blue-800 disabled:opacity-50 disabled:cursor-not-allowed font-bold py-2 rounded text-sm text-center transition flex items-center justify-center gap-1"
                 >
                   <PlusCircle className="w-4 h-4" /> Join Match
