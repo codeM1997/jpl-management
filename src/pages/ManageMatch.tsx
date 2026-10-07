@@ -113,6 +113,10 @@ export const ManageMatch: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [guestName, setGuestName] = useState('');
+  
+  const [allApprovedUsers, setAllApprovedUsers] = useState<AppUser[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showDropdown, setShowDropdown] = useState(false);
 
 
   const handleAddGuest = async (e: React.FormEvent) => {
@@ -131,12 +135,32 @@ export const ManageMatch: React.FC = () => {
       const newRoster = [...match.roster, guestUid];
       await updateDoc(doc(db, 'matches', matchId), { roster: newRoster });
       
-      // Update local unassigned state so the drag-and-drop pool catches it immediately
-      setUnassigned(prev => [...prev, guestUid]);
       setGuestName('');
     } catch (err) {
       console.error(err);
       alert('Failed to add guest.');
+    }
+  };
+
+  const handleAddApprovedPlayer = async (uid: string) => {
+    if (!matchId || !match) return;
+    const maxPlayers = match.maxPlayers || 12;
+    if (match.roster.length >= maxPlayers) {
+      alert(`Roster is full (${maxPlayers} players). Remove someone before adding a player.`);
+      return;
+    }
+    if (match.roster.includes(uid) || match.waitlist.includes(uid)) {
+      alert('Player is already in the match or waitlist.');
+      return;
+    }
+    try {
+      const newRoster = [...match.roster, uid];
+      await updateDoc(doc(db, 'matches', matchId), { roster: newRoster });
+      
+      setSearchQuery('');
+    } catch (err) {
+      console.error(err);
+      alert('Failed to add player.');
     }
   };
 
@@ -232,6 +256,17 @@ export const ManageMatch: React.FC = () => {
       setUnassigned(prev => [...prev, ...missingPlayers]);
     }
   }, [match?.roster, unassigned, teamRed, teamWhite]);
+
+  // Fetch all approved users for the dropdown
+  useEffect(() => {
+    const q = query(collection(db, 'users'), where('role', '!=', 'pending'));
+    const unsub = onSnapshot(q, (snap) => {
+      const users: AppUser[] = [];
+      snap.forEach(d => users.push(d.data() as AppUser));
+      setAllApprovedUsers(users);
+    });
+    return () => unsub();
+  }, []);
 
   const handleDragStart = (event: any) => {
     setActiveId(event.active.id);
@@ -700,25 +735,69 @@ export const ManageMatch: React.FC = () => {
               </DroppableContainer>
               
               {!isLocked && (
-                <form onSubmit={handleAddGuest} className="mt-4 pt-4 border-t border-gray-200">
-                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">Add Temporary Guest</label>
-                  <div className="flex gap-2">
-                    <input 
-                      type="text" 
-                      placeholder="Guest Name..." 
-                      value={guestName}
-                      onChange={e => setGuestName(e.target.value)}
-                      className="flex-grow text-sm border-gray-300 rounded-lg focus:ring-emerald-500 focus:border-emerald-500"
-                    />
-                    <button 
-                      type="submit" 
-                      disabled={!guestName.trim()}
-                      className="bg-gray-200 hover:bg-emerald-600 hover:text-white disabled:opacity-50 text-gray-700 font-bold px-3 rounded-lg transition"
-                    >
-                      Add
-                    </button>
+                <div className="mt-4 pt-4 border-t border-gray-200 space-y-4">
+                  {/* Add Approved Player */}
+                  <div>
+                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">Add Approved Player</label>
+                    <div className="relative">
+                      <input 
+                        type="text" 
+                        placeholder="Select or search player..." 
+                        value={searchQuery}
+                        onChange={e => setSearchQuery(e.target.value)}
+                        onFocus={() => setShowDropdown(true)}
+                        onBlur={() => setShowDropdown(false)}
+                        className="w-full text-sm border-gray-300 rounded-lg focus:ring-emerald-500 focus:border-emerald-500"
+                      />
+                      {showDropdown && (
+                        <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                          {allApprovedUsers
+                            .filter(u => u.name.toLowerCase().includes(searchQuery.toLowerCase()) && !match.roster.includes(u.uid) && !match.waitlist.includes(u.uid))
+                            .map(u => (
+                              <button
+                                key={u.uid}
+                                type="button"
+                                onMouseDown={(e) => {
+                                  e.preventDefault(); // Prevent blur from firing before click
+                                  handleAddApprovedPlayer(u.uid);
+                                  setShowDropdown(false);
+                                }}
+                                className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 border-b border-gray-100 last:border-0"
+                              >
+                                <span className="font-bold text-gray-900">{u.name}</span>
+                                <span className="text-gray-500 ml-2 text-xs">Tier {u.tier}</span>
+                              </button>
+                            ))
+                          }
+                          {allApprovedUsers.filter(u => u.name.toLowerCase().includes(searchQuery.toLowerCase()) && !match.roster.includes(u.uid) && !match.waitlist.includes(u.uid)).length === 0 && (
+                            <div className="px-3 py-2 text-sm text-gray-500">No available players found.</div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </form>
+
+                  {/* Add Temporary Guest */}
+                  <form onSubmit={handleAddGuest}>
+                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">Add Temporary Guest</label>
+                    <div className="flex gap-2">
+                      <input 
+                        type="text" 
+                        placeholder="Guest Name..." 
+                        value={guestName}
+                        onChange={e => setGuestName(e.target.value)}
+                        className="flex-grow text-sm border-gray-300 rounded-lg focus:ring-emerald-500 focus:border-emerald-500"
+                      />
+                      <button 
+                        type="submit" 
+                        disabled={!guestName.trim()}
+                        className="bg-gray-200 hover:bg-emerald-600 hover:text-white disabled:opacity-50 text-gray-700 font-bold px-3 rounded-lg transition"
+                      >
+                        Add
+                      </button>
+                    </div>
+                  </form>
+                </div>
               )}
             </div>
 
