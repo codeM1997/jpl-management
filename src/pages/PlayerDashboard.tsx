@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { collection, query, orderBy, onSnapshot, doc, runTransaction, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import type { Match } from '../types';
-import { Calendar, MapPin, Clock, CheckCircle, AlertCircle, XCircle } from 'lucide-react';
+import { Calendar, MapPin, Clock, CheckCircle, AlertCircle, XCircle, Users } from 'lucide-react';
 import { PaymentModal } from '../components/PaymentModal';
 
 export const PlayerDashboard: React.FC = () => {
@@ -45,41 +45,59 @@ export const PlayerDashboard: React.FC = () => {
     return () => unsubscribe();
   }, [userData]);
 
-  // Fetch team names if published for upcoming match
+  // Fetch user names for roster, waitlist, and teams
   useEffect(() => {
     const fetchNames = async () => {
-      if (upcomingMatch?.status === 'published' || upcomingMatch?.status === 'teams_generated') {
-        const uids = [...upcomingMatch.teamRed, ...upcomingMatch.teamWhite];
-        if (uids.length > 0) {
-          const names: Record<string, string> = {};
-          
-          const realUids = uids.filter(uid => !uid.startsWith('guest:'));
-          const guestUids = uids.filter(uid => uid.startsWith('guest:'));
-          
-          // Synthesize guest names instantly
-          guestUids.forEach(uid => {
-            const guestName = uid.split(':')[1];
-            names[uid] = guestName + ' (Guest)';
-          });
-          
-          // Firestore 'in' queries support max 10 items.
-          const chunkSize = 10;
-          for (let i = 0; i < realUids.length; i += chunkSize) {
-            const chunk = realUids.slice(i, i + chunkSize);
-            if (chunk.length > 0) {
-              const uidsQuery = query(collection(db, 'users'), where('uid', 'in', chunk));
-              const snap = await getDocs(uidsQuery);
-              snap.forEach((d: any) => {
-                names[d.data().uid] = d.data().name;
-              });
-            }
+      if (!upcomingMatch) return;
+
+      const isPublished = upcomingMatch.status === 'published' || upcomingMatch.status === 'teams_generated';
+      const isRoster = userData?.uid ? upcomingMatch.roster.includes(userData.uid) : false;
+      const isWaitlist = userData?.uid ? upcomingMatch.waitlist.includes(userData.uid) : false;
+      
+      const shouldFetchRoster = isRoster || isWaitlist;
+
+      const uidsToFetch = new Set<string>();
+
+      if (shouldFetchRoster) {
+        upcomingMatch.roster.forEach(uid => uidsToFetch.add(uid));
+      }
+
+      if (isPublished) {
+        upcomingMatch.teamRed.forEach(uid => uidsToFetch.add(uid));
+        upcomingMatch.teamWhite.forEach(uid => uidsToFetch.add(uid));
+      }
+
+      const uids = Array.from(uidsToFetch);
+
+      if (uids.length > 0) {
+        const names: Record<string, string> = {};
+        
+        const realUids = uids.filter(uid => !uid.startsWith('guest:'));
+        const guestUids = uids.filter(uid => uid.startsWith('guest:'));
+        
+        // Synthesize guest names instantly
+        guestUids.forEach(uid => {
+          const guestName = uid.split(':')[1];
+          names[uid] = guestName + ' (Guest)';
+        });
+        
+        // Firestore 'in' queries support max 10 items.
+        const chunkSize = 10;
+        for (let i = 0; i < realUids.length; i += chunkSize) {
+          const chunk = realUids.slice(i, i + chunkSize);
+          if (chunk.length > 0) {
+            const uidsQuery = query(collection(db, 'users'), where('uid', 'in', chunk));
+            const snap = await getDocs(uidsQuery);
+            snap.forEach((d: any) => {
+              names[d.data().uid] = d.data().name;
+            });
           }
-          setTeamNames(names);
         }
+        setTeamNames(names);
       }
     };
     fetchNames();
-  }, [upcomingMatch?.status, upcomingMatch?.teamRed, upcomingMatch?.teamWhite]);
+  }, [upcomingMatch, userData?.uid]);
 
   const handleRSVP = async (intent: 'in' | 'out', screenshotUrl?: string) => {
     if (!upcomingMatch || !userData) return;
@@ -372,6 +390,24 @@ export const PlayerDashboard: React.FC = () => {
             </div>
             {upcomingMatch.waitlist.length > 0 && (
               <p className="text-xs text-amber-600 font-bold text-right">{upcomingMatch.waitlist.length} on waitlist</p>
+            )}
+            
+            {isRoster && upcomingMatch.roster.length > 0 && (
+              <div className="mt-4 border border-gray-200 rounded-xl bg-gray-50 p-4">
+                <h4 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
+                  <Users className="w-4 h-4" /> Players Joined
+                </h4>
+                <div className="flex flex-col gap-2">
+                  {upcomingMatch.roster.map((uid, index) => (
+                    <div key={uid} className="flex items-center gap-2 bg-white px-3 py-2 rounded-lg border border-gray-100 shadow-sm">
+                      <span className="text-gray-400 font-medium text-sm w-4">{index + 1}.</span>
+                      <span className="font-bold text-gray-900 text-sm">
+                        {uid === userData?.uid ? <span className="text-emerald-600">You</span> : (teamNames[uid] || 'Loading...')}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
 
