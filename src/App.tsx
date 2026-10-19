@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { Login } from './pages/Login';
 import { Join } from './pages/Join';
+import { ResetPin } from './pages/ResetPin';
 import { PendingApproval } from './pages/PendingApproval';
 import { AdminDashboard } from './pages/AdminDashboard';
 import { PlayerDashboard } from './pages/PlayerDashboard';
@@ -32,6 +33,7 @@ function App() {
           {/* Public Routes */}
           <Route path="/login" element={<Login />} />
           <Route path="/join" element={<Join />} />
+          <Route path="/reset-pin" element={<ResetPin />} />
 
           {/* Protected Routes */}
           <Route element={<ProtectedRoute />}>

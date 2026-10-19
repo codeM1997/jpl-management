@@ -13,7 +13,16 @@ export const Login: React.FC = () => {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
+  const [forgotCooldown, setForgotCooldown] = useState(0);
   const navigate = useNavigate();
+
+  React.useEffect(() => {
+    if (forgotCooldown <= 0) return;
+    const timer = setTimeout(() => {
+      setForgotCooldown(c => c - 1);
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [forgotCooldown]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,6 +85,8 @@ export const Login: React.FC = () => {
   const handleForgotPin = async () => {
     setError('');
     setMessage('');
+
+    if (forgotCooldown > 0) return;
     
     if (!identifier.trim()) {
       setError('Please enter your email or phone number first to reset your PIN.');
@@ -109,8 +120,14 @@ export const Login: React.FC = () => {
         resetEmail = querySnapshot.docs[0].data().email;
       }
 
-      await sendPasswordResetEmail(auth, resetEmail);
-      setMessage(`A PIN reset link has been sent to ${resetEmail}! Check your inbox.`);
+      const actionCodeSettings = {
+        url: `${window.location.origin}/reset-pin`,
+        handleCodeInApp: true,
+      };
+
+      await sendPasswordResetEmail(auth, resetEmail, actionCodeSettings);
+      setForgotCooldown(60);
+      setMessage(`A PIN reset link has been sent to ${resetEmail}! Please check your inbox and click the link in the latest email.`);
     } catch (err: any) {
       console.error(err);
       setError(err.message || 'Failed to send reset email.');
@@ -194,10 +211,11 @@ export const Login: React.FC = () => {
                 </label>
                 <button
                   type="button"
+                  disabled={forgotCooldown > 0 || loading}
                   onClick={handleForgotPin}
-                  className="text-sm font-medium text-emerald-600 hover:text-emerald-500 focus:outline-none"
+                  className="text-sm font-medium text-emerald-600 hover:text-emerald-500 focus:outline-none disabled:text-gray-400 disabled:cursor-not-allowed"
                 >
-                  Forgot PIN?
+                  {forgotCooldown > 0 ? `Resend link (${forgotCooldown}s)` : 'Forgot PIN?'}
                 </button>
               </div>
               <PinInput value={pin} onChange={setPin} label="" />
