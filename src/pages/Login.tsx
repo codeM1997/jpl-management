@@ -36,8 +36,19 @@ export const Login: React.FC = () => {
 
       // If it looks like a phone number (no @ symbol), look up the email
       if (!loginEmail.includes('@')) {
+        const digits = loginEmail.replace(/\D/g, '');
+        const phoneVariants = [
+          digits,
+          `+91${digits}`,
+          `+91 ${digits}`,
+          `91${digits}`,
+          `0${digits}`,
+          `+91-${digits}`,
+          `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`
+        ];
+
         const usersRef = collection(db, 'users');
-        const q = query(usersRef, where('phone', '==', loginEmail));
+        const q = query(usersRef, where('phone', 'in', phoneVariants));
         const querySnapshot = await getDocs(q);
         
         if (querySnapshot.empty) {
@@ -77,8 +88,19 @@ export const Login: React.FC = () => {
 
       // If phone number, find the email
       if (!resetEmail.includes('@')) {
+        const digits = resetEmail.replace(/\D/g, '');
+        const phoneVariants = [
+          digits,
+          `+91${digits}`,
+          `+91 ${digits}`,
+          `91${digits}`,
+          `0${digits}`,
+          `+91-${digits}`,
+          `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`
+        ];
+
         const usersRef = collection(db, 'users');
-        const q = query(usersRef, where('phone', '==', resetEmail));
+        const q = query(usersRef, where('phone', 'in', phoneVariants));
         const querySnapshot = await getDocs(q);
         
         if (querySnapshot.empty) {
