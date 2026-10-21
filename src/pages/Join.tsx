@@ -35,11 +35,6 @@ export const Join: React.FC = () => {
       const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), pin);
       const user = userCredential.user;
 
-      const preferredList: Position[] = [primaryPos];
-      if (secondaryPos && secondaryPos !== primaryPos) {
-        preferredList.push(secondaryPos);
-      }
-
       // 2. Create Firestore user profile
       const userDocRef = doc(db, 'users', user.uid);
       await setDoc(userDocRef, {
@@ -52,7 +47,6 @@ export const Join: React.FC = () => {
         primaryPosition: primaryPos,
         secondaryPosition: secondaryPos || null,
         happyAnywhere,
-        preferredPos: preferredList,
         pace: 5,
         stamina: 5,
         dribbling: 5,
@@ -61,10 +55,6 @@ export const Join: React.FC = () => {
         defending: 5,
         gameIQ: 5,
         gkRating: primaryPos === 'GK' || secondaryPos === 'GK' ? 5 : null,
-        attackRating: 5,
-        defRating: 5,
-        passingRating: 5,
-        iqRating: 5,
         fcmToken: null,
         createdAt: serverTimestamp()
       });

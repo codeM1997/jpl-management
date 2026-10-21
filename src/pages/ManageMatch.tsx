@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { doc, getDocs, updateDoc, collection, query, where, onSnapshot, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -9,7 +9,7 @@ import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSo
 import { CSS } from '@dnd-kit/utilities';
 import { ArrowLeft, Users, Shield, Save, X, PlusCircle, Share2, Sparkles } from 'lucide-react';
 import { PaymentProofImage } from '../components/PaymentProofImage';
-import { generateBalancedTeams, normalizePlayer, getPlayerEffectiveRating } from '../utils/ratingEngine';
+import { generateBalancedTeams, evaluateSplit, normalizePlayer, getPlayerEffectiveRating } from '../utils/ratingEngine';
 
 // --- Sortable Player Item Component ---
 interface SortablePlayerProps {
@@ -148,11 +148,18 @@ export const ManageMatch: React.FC = () => {
   const [unassigned, setUnassigned] = useState<string[]>([]);
   const [teamRed, setTeamRed] = useState<string[]>([]);
   const [teamWhite, setTeamWhite] = useState<string[]>([]);
-  const [teamRedPositions, setTeamRedPositions] = useState<Record<string, Position>>({});
-  const [teamWhitePositions, setTeamWhitePositions] = useState<Record<string, Position>>({});
-  const [teamRedStrength, setTeamRedStrength] = useState<number | null>(null);
-  const [teamWhiteStrength, setTeamWhiteStrength] = useState<number | null>(null);
-  const [splitScore, setSplitScore] = useState<number | null>(null);
+
+  // Positions & strengths always reflect the current teams, including manual drags
+  const lineup = useMemo(() => {
+    if (teamRed.length === 0 && teamWhite.length === 0) return null;
+    const norm = (uids: string[]) => uids.filter(uid => players[uid]).map(uid => normalizePlayer(players[uid]));
+    return evaluateSplit(norm(teamRed), norm(teamWhite));
+  }, [teamRed, teamWhite, players]);
+  const teamRedPositions = lineup?.redPositions ?? {};
+  const teamWhitePositions = lineup?.whitePositions ?? {};
+  const teamRedStrength = lineup?.redStrength ?? null;
+  const teamWhiteStrength = lineup?.whiteStrength ?? null;
+  const splitScore = lineup?.splitScore ?? null;
   
   const [saving, setSaving] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -242,12 +249,8 @@ export const ManageMatch: React.FC = () => {
               createdAt: Date.now(),
               role: 'player',
               tier: 2,
-              preferredPos: ['MID' as Position],
-              attackRating: 5,
-              defRating: 5,
-              passingRating: 5,
-              gkRating: 5,
-              iqRating: 5,
+              primaryPosition: 'MID',
+              gkRating: null,
             } as AppUser;
           });
           
@@ -271,11 +274,6 @@ export const ManageMatch: React.FC = () => {
             if (m.teamRed.length > 0 || m.teamWhite.length > 0) {
               setTeamRed(m.teamRed);
               setTeamWhite(m.teamWhite);
-              if (m.teamRedPositions) setTeamRedPositions(m.teamRedPositions);
-              if (m.teamWhitePositions) setTeamWhitePositions(m.teamWhitePositions);
-              if (typeof m.teamRedStrength === 'number') setTeamRedStrength(m.teamRedStrength);
-              if (typeof m.teamWhiteStrength === 'number') setTeamWhiteStrength(m.teamWhiteStrength);
-              if (typeof m.splitScore === 'number') setSplitScore(m.splitScore);
               const assigned = new Set([...m.teamRed, ...m.teamWhite]);
               setUnassigned(m.roster.filter(uid => !assigned.has(uid)));
             } else {
@@ -394,11 +392,6 @@ export const ManageMatch: React.FC = () => {
     if (!match) return;
     setTeamRed([]);
     setTeamWhite([]);
-    setTeamRedPositions({});
-    setTeamWhitePositions({});
-    setTeamRedStrength(null);
-    setTeamWhiteStrength(null);
-    setSplitScore(null);
     setUnassigned([...match.roster]); // Bring everyone back to unassigned
   };
 
@@ -421,11 +414,6 @@ export const ManageMatch: React.FC = () => {
 
     setTeamRed(balanced.teamRed);
     setTeamWhite(balanced.teamWhite);
-    setTeamRedPositions(balanced.redPositions);
-    setTeamWhitePositions(balanced.whitePositions);
-    setTeamRedStrength(balanced.redStrength);
-    setTeamWhiteStrength(balanced.whiteStrength);
-    setSplitScore(balanced.splitScore);
     setUnassigned([]);
   };
 
@@ -631,6 +619,7 @@ export const ManageMatch: React.FC = () => {
   if (!match) return <div className="p-8 text-center">Loading match...</div>;
 
   const activeUser = activeId ? players[activeId] : null;
+  const activeNorm = activeUser ? normalizePlayer(activeUser) : null;
   const isLocked = match.status === 'published' || match.status === 'completed';
   const isPublished = match.status === 'published';
   const maxPlayers = match.maxPlayers || 12;
@@ -899,6 +888,7 @@ export const ManageMatch: React.FC = () => {
                 {match.waitlist.map((uid, idx) => {
                   const user = players[uid];
                   if (!user) return null;
+                  const norm = normalizePlayer(user);
                   return (
                     <div key={uid} className="bg-amber-50 border border-amber-100 p-3 rounded-lg flex flex-col justify-between h-full">
                       <div>
@@ -906,9 +896,9 @@ export const ManageMatch: React.FC = () => {
                           <span className="font-bold text-amber-900">{idx + 1}. {user.name}</span>
                         </div>
                         <div className="text-[10px] font-bold text-amber-800 mb-0.5">
-                          [{Array.isArray(user.preferredPos) ? user.preferredPos.join(', ') : user.preferredPos}]
+                          [{norm.primaryPosition}{norm.secondaryPosition ? `, ${norm.secondaryPosition}` : ''}]
                         </div>
-                        <div className="text-[10px] font-mono text-amber-700 mb-3">Tier {user.tier} | A:{user.attackRating} D:{user.defRating} P:{user.passingRating || 5} G:{user.gkRating || 5} IQ:{user.iqRating || 5}</div>
+                        <div className="text-[10px] font-mono text-amber-700 mb-3">Tier {user.tier} | D:{norm.calculated.def} M:{norm.calculated.mid} F:{norm.calculated.fwd}{norm.attributes.gkRating != null ? ` GK:${norm.attributes.gkRating}` : ''}</div>
                       </div>
                       <button 
                         onClick={() => handlePromoteFromWaitlist(uid)}
@@ -1029,15 +1019,15 @@ export const ManageMatch: React.FC = () => {
 
           {/* Drag Overlay for smooth animations */}
           <DragOverlay>
-            {activeUser ? (
+            {activeUser && activeNorm ? (
               <div className="bg-white p-3 rounded-lg border-2 border-emerald-500 shadow-xl opacity-90 scale-105 flex justify-between items-center w-full max-w-sm cursor-grabbing">
                 <div>
                   <div className="font-bold text-gray-900 text-sm">{activeUser.name}</div>
                   <div className="text-[10px] font-bold text-emerald-700 mt-0.5">
-                    [{Array.isArray(activeUser.preferredPos) ? activeUser.preferredPos.join(', ') : activeUser.preferredPos}]
+                    [{activeNorm.primaryPosition}{activeNorm.secondaryPosition ? `, ${activeNorm.secondaryPosition}` : ''}]
                   </div>
                   <div className="text-[10px] font-mono text-gray-500 mt-0.5">
-                    A:{activeUser.attackRating} D:{activeUser.defRating} P:{activeUser.passingRating || 5} G:{activeUser.gkRating || 5} IQ:{activeUser.iqRating || 5}
+                    D:{activeNorm.calculated.def} M:{activeNorm.calculated.mid} F:{activeNorm.calculated.fwd}{activeNorm.attributes.gkRating != null ? ` GK:${activeNorm.attributes.gkRating}` : ''}
                   </div>
                 </div>
               </div>

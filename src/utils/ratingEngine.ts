@@ -42,6 +42,9 @@ export interface AssignedLineup {
   splitScore: number;
 }
 
+export type SlotPosition = Exclude<Position, 'ST'>;
+const SLOT_POSITIONS: SlotPosition[] = ['GK', 'DEF', 'MID', 'FWD'];
+
 // Weights from Sunday 6v6 Weightage Structure
 export const POSITION_WEIGHTS = {
   DEF: {
@@ -84,8 +87,10 @@ export const ALGORITHM_SETTINGS = {
   PRIMARY_PENALTY: 0,
   SECONDARY_OR_FLEX_PENALTY: 0.20,
   OUT_OF_POSITION_PENALTY: 3.0,
-  MAX_RATING_DIFF_TOLERANCE: 2.0,
+  MAX_RATING_DIFF_PER_PLAYER: 2.0 / 6, // 2.0 total strength diff for 6v6, scales with team size
+  GK_ROTATOR_MIN_RATING: 6.0,
   TOP_N_SPLITS: 5,
+  VARIETY_SCORE_WINDOW: 0.5, // only splits within this of the best score are picked at random
 } as const;
 
 /**
@@ -113,7 +118,7 @@ export function isGkCapable(player: NormalizedPlayer): boolean {
     player.primaryPosition === 'GK' ||
     player.secondaryPosition === 'GK' ||
     player.happyAnywhere ||
-    (typeof player.attributes.gkRating === 'number' && player.attributes.gkRating >= 5.0)
+    (typeof player.attributes.gkRating === 'number' && player.attributes.gkRating >= ALGORITHM_SETTINGS.GK_ROTATOR_MIN_RATING)
   );
 }
 
@@ -151,17 +156,15 @@ export function sanitizePosition(pos?: Position | string): Position {
  * Calculates DEF, MID, FWD ratings and determines best outfield position
  */
 export function calculatePositionRatings(attrs: PlayerAttributes): CalculatedPositionRatings {
-  const p = attrs.pace ?? 5;
-  const s = attrs.stamina ?? 5;
-  const d = attrs.dribbling ?? 5;
-  const pas = attrs.passing ?? 5;
-  const f = attrs.finishing ?? 5;
-  const def = attrs.defending ?? 5;
-  const iq = attrs.gameIQ ?? 5;
+  const weighted = (pos: keyof typeof POSITION_WEIGHTS) => {
+    const weights = POSITION_WEIGHTS[pos];
+    return (Object.keys(weights) as (keyof typeof weights)[])
+      .reduce((sum, attr) => sum + (attrs[attr] ?? 5) * weights[attr], 0);
+  };
 
-  const defExact = (p * 0.15) + (s * 0.15) + (d * 0.10) + (pas * 0.10) + (f * 0.00) + (def * 0.35) + (iq * 0.15);
-  const midExact = (p * 0.05) + (s * 0.20) + (d * 0.15) + (pas * 0.25) + (f * 0.10) + (def * 0.10) + (iq * 0.15);
-  const fwdExact = (p * 0.15) + (s * 0.10) + (d * 0.20) + (pas * 0.10) + (f * 0.30) + (def * 0.00) + (iq * 0.15);
+  const defExact = weighted('DEF');
+  const midExact = weighted('MID');
+  const fwdExact = weighted('FWD');
 
   const defRounded = Math.round(defExact * 10) / 10;
   const midRounded = Math.round(midExact * 10) / 10;
@@ -303,7 +306,7 @@ export function getPlayerEffectiveRating(player: NormalizedPlayer, position: Pos
  * Creates formation slots based on team size.
  * For 6 players: [GK, DEF, DEF, MID, MID, FWD] (Default Sunday 6v6)
  */
-export function getFormationSlots(teamSize: number): Position[] {
+export function getFormationSlots(teamSize: number): SlotPosition[] {
   if (teamSize === 6) {
     return ['GK', 'DEF', 'DEF', 'MID', 'MID', 'FWD'];
   }
@@ -315,7 +318,7 @@ export function getFormationSlots(teamSize: number): Position[] {
   }
 
   // Generic fallback
-  const slots: Position[] = ['GK', 'FWD'];
+  const slots: SlotPosition[] = ['GK', 'FWD'];
   const remaining = teamSize - 2;
   const defCount = Math.ceil(remaining / 2);
   const midCount = remaining - defCount;
@@ -326,37 +329,34 @@ export function getFormationSlots(teamSize: number): Position[] {
 
 /**
  * Finds the optimal assignment of players into formation slots maximizing total strength.
- * For 6v6 (6 players, [GK, DEF, DEF, MID, MID, FWD]), evaluates all 180 unique combinations.
+ * Assigns each player a position from the remaining slot counts, so duplicate slots
+ * (DEF, DEF) aren't permuted: 180 arrangements for 6v6 instead of 720.
  */
 function optimizeTeamLineup(
   players: NormalizedPlayer[],
-  slots: Position[]
+  slots: SlotPosition[]
 ): { positions: Record<string, Position>; strength: number } {
-  const n = players.length;
+  const ratingCache = players.map(p => {
+    const r = {} as Record<SlotPosition, number>;
+    SLOT_POSITIONS.forEach(pos => { r[pos] = getPlayerEffectiveRating(p, pos).effectiveRating; });
+    return r;
+  });
 
-  // Pre-calculate effective ratings for each player at each distinct position
-  const ratingCache = players.map(p => ({
-    GK: getPlayerEffectiveRating(p, 'GK').effectiveRating,
-    DEF: getPlayerEffectiveRating(p, 'DEF').effectiveRating,
-    MID: getPlayerEffectiveRating(p, 'MID').effectiveRating,
-    FWD: getPlayerEffectiveRating(p, 'FWD').effectiveRating,
-  }));
+  const fitPenaltyCache = players.map(p => {
+    const r = {} as Record<SlotPosition, number>;
+    SLOT_POSITIONS.forEach(pos => { r[pos] = getPositionFitPenalty(p, pos); });
+    return r;
+  });
 
-  const fitPenaltyCache = players.map(p => ({
-    GK: getPositionFitPenalty(p, 'GK'),
-    DEF: getPositionFitPenalty(p, 'DEF'),
-    MID: getPositionFitPenalty(p, 'MID'),
-    FWD: getPositionFitPenalty(p, 'FWD'),
-  }));
+  const remaining: Record<SlotPosition, number> = { GK: 0, DEF: 0, MID: 0, FWD: 0 };
+  slots.forEach(pos => remaining[pos]++);
 
-  let bestScore = -999999;
-  let bestAssignment: Position[] = [];
+  let bestScore = -Infinity;
+  let bestAssignment: SlotPosition[] = [];
+  const currentAssignment: SlotPosition[] = [];
 
-  const used = new Array(n).fill(false);
-  const currentAssignment = new Array<Position>(n);
-
-  function search(slotIdx: number, currentScore: number) {
-    if (slotIdx === slots.length) {
+  function search(playerIdx: number, currentScore: number) {
+    if (playerIdx === players.length) {
       if (currentScore > bestScore) {
         bestScore = currentScore;
         bestAssignment = [...currentAssignment];
@@ -364,18 +364,13 @@ function optimizeTeamLineup(
       return;
     }
 
-    const pos = slots[slotIdx];
-
-    for (let i = 0; i < n; i++) {
-      if (!used[i]) {
-        used[i] = true;
-        currentAssignment[i] = pos;
-        const rate = (ratingCache[i] as any)[pos];
-        const fitPen = (fitPenaltyCache[i] as any)[pos];
-        // Lineup solver maximizes rating while strongly disfavoring out-of-position assignments
-        search(slotIdx + 1, currentScore + rate - (fitPen * 0.5));
-        used[i] = false;
-      }
+    for (const pos of SLOT_POSITIONS) {
+      if (remaining[pos] === 0) continue;
+      remaining[pos]--;
+      currentAssignment[playerIdx] = pos;
+      // Same fit penalty the split score uses, so the lineup optimizes what the split is judged on
+      search(playerIdx + 1, currentScore + ratingCache[playerIdx][pos] - fitPenaltyCache[playerIdx][pos]);
+      remaining[pos]++;
     }
   }
 
@@ -384,9 +379,9 @@ function optimizeTeamLineup(
   let totalStrength = 0;
   const positions: Record<string, Position> = {};
   players.forEach((p, i) => {
-    const pos = bestAssignment[i] || 'MID';
+    const pos = bestAssignment[i];
     positions[p.uid] = pos;
-    totalStrength += (ratingCache[i] as any)[pos];
+    totalStrength += ratingCache[i][pos];
   });
 
   return {
@@ -396,19 +391,69 @@ function optimizeTeamLineup(
 }
 
 /**
- * 5-Step Team Generation Algorithm:
+ * Picks the best positions within each team and scores the split:
+ * - Difference in team strength (diff up to MAX_RATING_DIFF_PER_PLAYER × team size is minimally penalized; beyond that heavily penalized)
+ * - Position fit penalty (Primary: 0, Secondary / Flex: 0.2, Out-of-position: 3.0)
+ * - GK Coverage & Rotation Capability:
+ *   * Dedicated primary GK in goal: 0
+ *   * No primary GK, but >= 2 rotators (secondary GK, flex, or GK rating >= 6): 1.5
+ *   * No primary GK, only 1 rotator: 5.0
+ *   * No primary GK, 0 rotators: 15.0
+ * Used both by the generator and to re-score teams after manual edits.
+ */
+export function evaluateSplit(redPlayers: NormalizedPlayer[], whitePlayers: NormalizedPlayer[]): AssignedLineup {
+  const redOpt = optimizeTeamLineup(redPlayers, getFormationSlots(redPlayers.length));
+  const whiteOpt = optimizeTeamLineup(whitePlayers, getFormationSlots(whitePlayers.length));
+
+  const strengthDiff = Math.round(Math.abs(redOpt.strength - whiteOpt.strength) * 10) / 10;
+
+  // Position fit penalties
+  let totalPositionPenalty = 0;
+  let offPrimaryCount = 0;
+
+  [...redPlayers, ...whitePlayers].forEach(p => {
+    const pos = redOpt.positions[p.uid] ?? whiteOpt.positions[p.uid];
+    if (pos !== p.primaryPosition) offPrimaryCount++;
+    totalPositionPenalty += getPositionFitPenalty(p, pos);
+  });
+
+  // Goalkeeper coverage & rotation capability
+  const redGkPenalty = evaluateTeamGk(redPlayers, redOpt.positions);
+  const whiteGkPenalty = evaluateTeamGk(whitePlayers, whiteOpt.positions);
+  const missingGkPenalty = Math.round((redGkPenalty + whiteGkPenalty) * 10) / 10;
+
+  // Rating difference penalty (allow small diff without sacrificing position fit)
+  const tolerance = ALGORITHM_SETTINGS.MAX_RATING_DIFF_PER_PLAYER * Math.max(redPlayers.length, whitePlayers.length);
+  let strengthDiffPenalty = 0;
+  if (strengthDiff <= tolerance) {
+    strengthDiffPenalty = strengthDiff * 0.25;
+  } else {
+    strengthDiffPenalty = (tolerance * 0.25) + ((strengthDiff - tolerance) * 5.0);
+  }
+
+  const splitScore = Math.round(
+    (strengthDiffPenalty + totalPositionPenalty + missingGkPenalty) * 100
+  ) / 100;
+
+  return {
+    teamRed: redPlayers.map(p => p.uid),
+    teamWhite: whitePlayers.map(p => p.uid),
+    redPositions: redOpt.positions,
+    whitePositions: whiteOpt.positions,
+    redStrength: redOpt.strength,
+    whiteStrength: whiteOpt.strength,
+    strengthDiff,
+    offPrimaryCount,
+    missingGkPenalty,
+    splitScore,
+  };
+}
+
+/**
+ * Team Generation Algorithm:
  * 1. Generate all splits into two teams (e.g. 462 splits for 12 players).
- * 2. Find best positions within each team (180 arrangements per team). Keep arrangement prioritizing primary/secondary fit and strength.
- * 3. Score each split:
- *    - Difference in team strength (diff up to 2.0 is allowed and minimally penalized; diff > 2.0 heavily penalized)
- *    - Position fit penalty (Primary: 0, Secondary / Flex: 0.2, Out-of-position: 3.0)
- *    - GK Coverage & Rotation Capability:
- *      * Dedicated primary GK in goal: 0
- *      * No primary GK, but >= 2 rotators (secondary GK or flex): 1.5
- *      * No primary GK, only 1 rotator: 5.0
- *      * No primary GK, 0 rotators: 15.0
- * 4. Pick randomly from the top 5 lowest-scoring splits for variety.
- * 5. Return assigned teams, positions, and scores.
+ * 2. Score each split with evaluateSplit.
+ * 3. Pick randomly from the top 5 splits within VARIETY_SCORE_WINDOW of the best score.
  */
 export function generateBalancedTeams(
   rosterUids: string[],
@@ -423,7 +468,6 @@ export function generateBalancedTeams(
 
   const totalPlayers = normalizedPlayers.length;
   const teamSize = Math.floor(totalPlayers / 2);
-  const slots = getFormationSlots(teamSize);
 
   // 1. Generate unique combinations of team splits
   // To avoid duplicate mirror teams, fix player[0] in Team Red
@@ -453,69 +497,19 @@ export function generateBalancedTeams(
 
   if (candidateSplits.length === 0) return null;
 
-  // 2 & 3. Evaluate each split
-  const evaluatedSplits: AssignedLineup[] = candidateSplits.map(split => {
-    const redPlayers = split.redIndices.map(i => normalizedPlayers[i]);
-    const whitePlayers = split.whiteIndices.map(i => normalizedPlayers[i]);
+  // 2. Evaluate each split
+  const evaluatedSplits = candidateSplits.map(split => evaluateSplit(
+    split.redIndices.map(i => normalizedPlayers[i]),
+    split.whiteIndices.map(i => normalizedPlayers[i])
+  ));
 
-    const redOpt = optimizeTeamLineup(redPlayers, slots);
-    const whiteOpt = optimizeTeamLineup(whitePlayers, slots);
-
-    const strengthDiff = Math.round(Math.abs(redOpt.strength - whiteOpt.strength) * 10) / 10;
-
-    // Position fit penalties
-    let totalPositionPenalty = 0;
-    let offPrimaryCount = 0;
-
-    redPlayers.forEach(p => {
-      const pos = redOpt.positions[p.uid];
-      if (pos !== p.primaryPosition) offPrimaryCount++;
-      totalPositionPenalty += getPositionFitPenalty(p, pos);
-    });
-
-    whitePlayers.forEach(p => {
-      const pos = whiteOpt.positions[p.uid];
-      if (pos !== p.primaryPosition) offPrimaryCount++;
-      totalPositionPenalty += getPositionFitPenalty(p, pos);
-    });
-
-    // Goalkeeper coverage & rotation capability
-    const redGkPenalty = evaluateTeamGk(redPlayers, redOpt.positions);
-    const whiteGkPenalty = evaluateTeamGk(whitePlayers, whiteOpt.positions);
-    const missingGkPenalty = Math.round((redGkPenalty + whiteGkPenalty) * 10) / 10;
-
-    // Rating difference penalty (allow diff up to 2.0 without sacrificing position fit)
-    let strengthDiffPenalty = 0;
-    if (strengthDiff <= ALGORITHM_SETTINGS.MAX_RATING_DIFF_TOLERANCE) {
-      strengthDiffPenalty = strengthDiff * 0.25;
-    } else {
-      strengthDiffPenalty = (ALGORITHM_SETTINGS.MAX_RATING_DIFF_TOLERANCE * 0.25) + ((strengthDiff - ALGORITHM_SETTINGS.MAX_RATING_DIFF_TOLERANCE) * 5.0);
-    }
-
-    const splitScore = Math.round(
-      (strengthDiffPenalty + totalPositionPenalty + missingGkPenalty) * 100
-    ) / 100;
-
-    return {
-      teamRed: redPlayers.map(p => p.uid),
-      teamWhite: whitePlayers.map(p => p.uid),
-      redPositions: redOpt.positions,
-      whitePositions: whiteOpt.positions,
-      redStrength: redOpt.strength,
-      whiteStrength: whiteOpt.strength,
-      strengthDiff,
-      offPrimaryCount,
-      missingGkPenalty,
-      splitScore,
-    };
-  });
-
-  // 4. Sort by splitScore ascending
+  // 3. Sort by splitScore ascending, pick randomly among the near-best
   evaluatedSplits.sort((a, b) => a.splitScore - b.splitScore);
 
-  // Take top N splits (default 5) and pick 1 randomly
-  const topCount = Math.min(ALGORITHM_SETTINGS.TOP_N_SPLITS, evaluatedSplits.length);
-  const randomIndex = Math.floor(Math.random() * topCount);
+  const maxScore = evaluatedSplits[0].splitScore + ALGORITHM_SETTINGS.VARIETY_SCORE_WINDOW;
+  const pool = evaluatedSplits
+    .slice(0, ALGORITHM_SETTINGS.TOP_N_SPLITS)
+    .filter(s => s.splitScore <= maxScore);
 
-  return evaluatedSplits[randomIndex];
+  return pool[Math.floor(Math.random() * pool.length)];
 }

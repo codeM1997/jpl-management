@@ -35,7 +35,7 @@ export const Navbar: React.FC = () => {
                 </span>
 
                 <span className="px-1.5 py-0.5 rounded bg-emerald-900 text-emerald-300 text-[10px] font-bold">
-                  {Array.isArray(userData.preferredPos) ? userData.preferredPos.join(', ') : userData.preferredPos}
+                  {[userData.primaryPosition ?? userData.preferredPos?.[0], userData.secondaryPosition ?? userData.preferredPos?.[1]].filter(Boolean).join(', ')}
                 </span>
               </div>
             </div>

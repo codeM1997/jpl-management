@@ -121,11 +121,6 @@ export const AdminDashboard: React.FC = () => {
     // Organizers can only approve as player, admins can choose role
     const finalRole = isAdmin ? data.role : 'player';
 
-    const prefList: Position[] = [data.primaryPosition];
-    if (data.secondaryPosition && data.secondaryPosition !== data.primaryPosition) {
-      prefList.push(data.secondaryPosition);
-    }
-
     try {
       await updateDoc(doc(db, 'users', uid), {
         role: finalRole,
@@ -133,7 +128,6 @@ export const AdminDashboard: React.FC = () => {
         primaryPosition: data.primaryPosition,
         secondaryPosition: data.secondaryPosition || null,
         happyAnywhere: data.happyAnywhere,
-        preferredPos: prefList,
         pace: data.pace,
         stamina: data.stamina,
         dribbling: data.dribbling,
@@ -142,11 +136,6 @@ export const AdminDashboard: React.FC = () => {
         defending: data.defending,
         gameIQ: data.gameIQ,
         gkRating: data.gkRating,
-        // Legacy fields for backwards compatibility
-        attackRating: data.finishing,
-        defRating: data.defending,
-        passingRating: data.passing,
-        iqRating: data.gameIQ,
       });
     } catch (err) {
       console.error("Failed to approve user:", err);
@@ -206,11 +195,6 @@ export const AdminDashboard: React.FC = () => {
   const handleSaveEdit = async () => {
     if (!editingPlayer) return;
 
-    const prefList: Position[] = [editData.primaryPosition];
-    if (editData.secondaryPosition && editData.secondaryPosition !== editData.primaryPosition) {
-      prefList.push(editData.secondaryPosition);
-    }
-
     try {
       await updateDoc(doc(db, 'users', editingPlayer.uid), {
         name: editData.name.trim() || editingPlayer.name,
@@ -219,7 +203,6 @@ export const AdminDashboard: React.FC = () => {
         primaryPosition: editData.primaryPosition,
         secondaryPosition: editData.secondaryPosition || null,
         happyAnywhere: editData.happyAnywhere,
-        preferredPos: prefList,
         pace: editData.pace,
         stamina: editData.stamina,
         dribbling: editData.dribbling,
@@ -228,11 +211,6 @@ export const AdminDashboard: React.FC = () => {
         defending: editData.defending,
         gameIQ: editData.gameIQ,
         gkRating: editData.gkRating,
-        // Legacy fields
-        attackRating: editData.finishing,
-        defRating: editData.defending,
-        passingRating: editData.passing,
-        iqRating: editData.gameIQ,
       });
       setEditingPlayer(null);
     } catch (err) {
@@ -284,11 +262,6 @@ export const AdminDashboard: React.FC = () => {
         const phone = existing?.phone ? existing.phone : `98100${(i + 1).toString().padStart(5, '0')}`;
         const email = existing?.email ? existing.email : `${firstWord}_${i + 1}@jpl.com`;
 
-        const preferredPos = [p.primaryPosition];
-        if (p.secondaryPosition && p.secondaryPosition !== p.primaryPosition) {
-          preferredPos.push(p.secondaryPosition);
-        }
-
         const playerDoc: any = {
           uid,
           name: p.name,
@@ -307,11 +280,6 @@ export const AdminDashboard: React.FC = () => {
           defending: p.defending,
           gameIQ: p.gameIQ,
           gkRating: p.gkRating,
-          preferredPos,
-          attackRating: p.finishing,
-          defRating: p.defending,
-          passingRating: p.passing,
-          iqRating: p.gameIQ,
           createdAt: existing?.createdAt || new Date(),
           updatedAt: new Date(),
         };
