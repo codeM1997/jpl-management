@@ -276,29 +276,59 @@ export const PlayerDashboard: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2">
             {/* Team Red */}
             <div className="p-6 md:border-r border-gray-200 bg-red-50">
-              <h3 className="text-2xl font-black text-red-800 text-center mb-6 uppercase tracking-wider flex items-center justify-center gap-2">
+              <h3 className="text-2xl font-black text-red-800 text-center mb-1 uppercase tracking-wider flex items-center justify-center gap-2">
                 <span className="w-4 h-4 rounded-full bg-red-600 block"></span> Team Red
               </h3>
+              {typeof upcomingMatch.teamRedStrength === 'number' && (
+                <p className="text-xs font-black text-red-600 text-center mb-4">Strength: {upcomingMatch.teamRedStrength}</p>
+              )}
               <div className="space-y-3">
-                {upcomingMatch.teamRed.map((uid, i) => (
-                  <div key={i} className="flex justify-between items-center bg-white p-3 rounded-lg border border-red-100 shadow-sm">
-                    <span className="font-bold text-gray-900">{uid === userData?.uid ? <span className="text-emerald-600 font-black">{userData.name} (You)</span> : (teamNames[uid] || 'Loading...')}</span>
-                  </div>
-                ))}
+                {upcomingMatch.teamRed.map((uid, i) => {
+                  const pos = upcomingMatch.teamRedPositions?.[uid];
+                  return (
+                    <div key={i} className="flex justify-between items-center bg-white p-3 rounded-lg border border-red-100 shadow-xs">
+                      <div className="flex items-center gap-2">
+                        {pos && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-red-100 text-red-800 border border-red-200">
+                            {pos}
+                          </span>
+                        )}
+                        <span className="font-bold text-gray-900">
+                          {uid === userData?.uid ? <span className="text-emerald-600 font-black">{userData.name} (You)</span> : (teamNames[uid] || 'Loading...')}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
             {/* Team White */}
             <div className="p-6 bg-slate-50">
-              <h3 className="text-2xl font-black text-slate-700 text-center mb-6 uppercase tracking-wider flex items-center justify-center gap-2">
+              <h3 className="text-2xl font-black text-slate-700 text-center mb-1 uppercase tracking-wider flex items-center justify-center gap-2">
                 <span className="w-4 h-4 rounded-full bg-white border-2 border-slate-300 block"></span> Team White
               </h3>
+              {typeof upcomingMatch.teamWhiteStrength === 'number' && (
+                <p className="text-xs font-black text-slate-600 text-center mb-4">Strength: {upcomingMatch.teamWhiteStrength}</p>
+              )}
               <div className="space-y-3">
-                {upcomingMatch.teamWhite.map((uid, i) => (
-                  <div key={i} className="flex justify-between items-center bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
-                    <span className="font-bold text-gray-900">{uid === userData?.uid ? <span className="text-emerald-600 font-black">{userData.name} (You)</span> : (teamNames[uid] || 'Loading...')}</span>
-                  </div>
-                ))}
+                {upcomingMatch.teamWhite.map((uid, i) => {
+                  const pos = upcomingMatch.teamWhitePositions?.[uid];
+                  return (
+                    <div key={i} className="flex justify-between items-center bg-white p-3 rounded-lg border border-slate-200 shadow-xs">
+                      <div className="flex items-center gap-2">
+                        {pos && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-slate-200 text-slate-800 border border-slate-300">
+                            {pos}
+                          </span>
+                        )}
+                        <span className="font-bold text-gray-900">
+                          {uid === userData?.uid ? <span className="text-emerald-600 font-black">{userData.name} (You)</span> : (teamNames[uid] || 'Loading...')}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>

@@ -9,10 +9,12 @@ import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSo
 import { CSS } from '@dnd-kit/utilities';
 import { ArrowLeft, Users, Shield, Save, X, PlusCircle, Share2, Sparkles } from 'lucide-react';
 import { PaymentProofImage } from '../components/PaymentProofImage';
+import { generateBalancedTeams, normalizePlayer, getPlayerEffectiveRating } from '../utils/ratingEngine';
 
 // --- Sortable Player Item Component ---
 interface SortablePlayerProps {
   user: AppUser;
+  assignedPosition?: Position;
   disabled?: boolean;
   onRemove?: (uid: string) => void;
   isPaid?: boolean;
@@ -20,8 +22,10 @@ interface SortablePlayerProps {
   onTogglePaid?: (uid: string) => void;
 }
 
-const SortablePlayer: React.FC<SortablePlayerProps> = ({ user, disabled, onRemove, paymentStatus }) => {
+const SortablePlayer: React.FC<SortablePlayerProps> = ({ user, assignedPosition, disabled, onRemove, paymentStatus }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: user.uid, disabled });
+  const norm = normalizePlayer(user);
+  const effectiveInfo = assignedPosition ? getPlayerEffectiveRating(norm, assignedPosition) : null;
   
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -30,28 +34,63 @@ const SortablePlayer: React.FC<SortablePlayerProps> = ({ user, disabled, onRemov
     opacity: isDragging ? 0.5 : 1,
   };
 
+  const getPosBadgeColor = (pos: Position) => {
+    switch (pos) {
+      case 'GK': return 'bg-purple-100 text-purple-800 border-purple-200';
+      case 'DEF': return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'MID': return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+      case 'FWD':
+      case 'ST': return 'bg-amber-100 text-amber-800 border-amber-200';
+      default: return 'bg-gray-100 text-gray-700 border-gray-200';
+    }
+  };
+
   return (
     <div 
       ref={setNodeRef} 
       style={style} 
-      className={`bg-white p-2 rounded-lg border shadow-sm mb-2 flex justify-between items-center ${isDragging ? 'border-emerald-500 ring-2 ring-emerald-200' : 'border-gray-200 hover:border-emerald-300'}`}
+      className={`bg-white px-3 py-2 rounded-xl border shadow-xs h-[64px] flex justify-between items-center transition-all ${isDragging ? 'border-emerald-500 ring-2 ring-emerald-200' : 'border-gray-200 hover:border-emerald-300'}`}
     >
       <div 
         {...attributes} 
         {...listeners}
-        className="flex-grow cursor-grab active:cursor-grabbing"
+        className="flex-grow min-w-0 cursor-grab active:cursor-grabbing mr-2 flex flex-col justify-center h-full"
       >
-        <div className="font-bold text-gray-900 text-sm flex items-center gap-1">
-          {user.name}
+        <div className="font-bold text-gray-900 text-sm flex items-center gap-1.5 truncate">
+          {assignedPosition && (
+            <span className={`px-1.5 py-0.5 rounded text-[10px] font-black border uppercase tracking-wider shrink-0 ${getPosBadgeColor(assignedPosition)}`}>
+              {assignedPosition}
+            </span>
+          )}
+          <span className="truncate">{user.name}</span>
+          {norm.happyAnywhere && (
+            <span className="text-[9px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-1 rounded font-semibold shrink-0">
+              Flex
+            </span>
+          )}
         </div>
-        <div className="text-[10px] font-bold text-emerald-700 mt-0.5">
-          [{Array.isArray(user.preferredPos) ? user.preferredPos.join(', ') : user.preferredPos}]
-        </div>
-        <div className="text-[10px] font-mono text-gray-500 mt-0.5">
-          A:{user.attackRating} D:{user.defRating} P:{user.passingRating || 5} G:{user.gkRating || 5} IQ:{user.iqRating || 5}
-        </div>
+        
+        {assignedPosition ? (
+          <div className="text-[11px] text-gray-600 mt-0.5 flex items-center gap-1.5 whitespace-nowrap overflow-hidden">
+            <span className="font-mono">
+              Rating: <b className="text-gray-900 font-bold">{effectiveInfo?.effectiveRating}</b>
+            </span>
+            <span className="text-gray-400 text-[10px]">
+              ({effectiveInfo?.rawRating} × {effectiveInfo?.multiplier})
+            </span>
+            <span className="text-gray-400 text-[10px] ml-auto shrink-0">
+              Nat: <span className="font-bold text-gray-600">{norm.primaryPosition}</span>
+            </span>
+          </div>
+        ) : (
+          <div className="text-[10px] text-gray-500 mt-0.5 flex items-center gap-1.5 whitespace-nowrap overflow-hidden">
+            <span className="font-bold text-emerald-700">Pos: {norm.primaryPosition}{norm.secondaryPosition ? `/${norm.secondaryPosition}` : ''}</span>
+            <span className="text-gray-300">|</span>
+            <span className="font-mono text-gray-600">D:{norm.calculated.def} M:{norm.calculated.mid} F:{norm.calculated.fwd}</span>
+          </div>
+        )}
       </div>
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-1.5 shrink-0">
         {paymentStatus && (
           <span 
             className={`px-2 py-0.5 rounded text-[10px] font-black border uppercase ${
@@ -89,7 +128,7 @@ const DroppableContainer: React.FC<DroppableContainerProps> = ({ id, items, chil
   
   return (
     <SortableContext items={items} strategy={verticalListSortingStrategy}>
-      <div ref={setNodeRef} className="flex-grow flex flex-col gap-2 min-h-[200px]">
+      <div ref={setNodeRef} className="flex-grow flex flex-col gap-2 min-h-[420px]">
         {children}
       </div>
     </SortableContext>
@@ -109,6 +148,11 @@ export const ManageMatch: React.FC = () => {
   const [unassigned, setUnassigned] = useState<string[]>([]);
   const [teamRed, setTeamRed] = useState<string[]>([]);
   const [teamWhite, setTeamWhite] = useState<string[]>([]);
+  const [teamRedPositions, setTeamRedPositions] = useState<Record<string, Position>>({});
+  const [teamWhitePositions, setTeamWhitePositions] = useState<Record<string, Position>>({});
+  const [teamRedStrength, setTeamRedStrength] = useState<number | null>(null);
+  const [teamWhiteStrength, setTeamWhiteStrength] = useState<number | null>(null);
+  const [splitScore, setSplitScore] = useState<number | null>(null);
   
   const [saving, setSaving] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -227,6 +271,11 @@ export const ManageMatch: React.FC = () => {
             if (m.teamRed.length > 0 || m.teamWhite.length > 0) {
               setTeamRed(m.teamRed);
               setTeamWhite(m.teamWhite);
+              if (m.teamRedPositions) setTeamRedPositions(m.teamRedPositions);
+              if (m.teamWhitePositions) setTeamWhitePositions(m.teamWhitePositions);
+              if (typeof m.teamRedStrength === 'number') setTeamRedStrength(m.teamRedStrength);
+              if (typeof m.teamWhiteStrength === 'number') setTeamWhiteStrength(m.teamWhiteStrength);
+              if (typeof m.splitScore === 'number') setSplitScore(m.splitScore);
               const assigned = new Set([...m.teamRed, ...m.teamWhite]);
               setUnassigned(m.roster.filter(uid => !assigned.has(uid)));
             } else {
@@ -345,6 +394,11 @@ export const ManageMatch: React.FC = () => {
     if (!match) return;
     setTeamRed([]);
     setTeamWhite([]);
+    setTeamRedPositions({});
+    setTeamWhitePositions({});
+    setTeamRedStrength(null);
+    setTeamWhiteStrength(null);
+    setSplitScore(null);
     setUnassigned([...match.roster]); // Bring everyone back to unassigned
   };
 
@@ -359,89 +413,19 @@ export const ManageMatch: React.FC = () => {
       return;
     }
 
-    // Outfield score only (GK rating excluded): A + D + P + IQ
-    const getScore = (uid: string) => {
-      const p = players[uid];
-      if (!p) return 0;
-      return (p.attackRating || 0) + (p.defRating || 0) + (p.passingRating || 5) + (p.iqRating || 5);
-    };
-
-    // --- Phase 1: Lock dedicated GKs ---
-    const dedicatedGKs = allPlayers.filter(uid => {
-      const p = players[uid];
-      return p && Array.isArray(p.preferredPos) && p.preferredPos.includes('GK' as Position);
-    });
-
-    let lockedRed: string[] = [];
-    let lockedWhite: string[] = [];
-    let remaining = [...allPlayers];
-
-    if (dedicatedGKs.length >= 2) {
-      // Distribute one dedicated GK per team
-      lockedRed.push(dedicatedGKs[0]);
-      lockedWhite.push(dedicatedGKs[1]);
-      remaining = remaining.filter(uid => uid !== dedicatedGKs[0] && uid !== dedicatedGKs[1]);
-    } else if (dedicatedGKs.length === 1) {
-      // Only one dedicated GK → assign to Red
-      lockedRed.push(dedicatedGKs[0]);
-      remaining = remaining.filter(uid => uid !== dedicatedGKs[0]);
-
-      // White needs a fallback: pick the player with the highest GK rating from remaining
-      if (remaining.length > 0) {
-        const bestFallback = remaining.reduce((best, uid) =>
-          (players[uid]?.gkRating || 5) > (players[best]?.gkRating || 5) ? uid : best
-        );
-        lockedWhite.push(bestFallback);
-        remaining = remaining.filter(uid => uid !== bestFallback);
-      }
-    }
-    // If 0 dedicated GKs → symmetric situation, no locking needed
-
-    // --- Phase 2: Brute-force balance remaining using A + D + P + IQ ---
-    const teamSize = Math.floor(allPlayers.length / 2);
-    const redToFill = teamSize - lockedRed.length;
-
-    if (redToFill <= 0) {
-      // Edge case: locked players already fill the team
-      setTeamRed(lockedRed.slice(0, teamSize));
-      setTeamWhite([...lockedWhite, ...remaining]);
-      setUnassigned([]);
+    const balanced = generateBalancedTeams(allPlayers, players);
+    if (!balanced) {
+      alert('Could not balance teams. Check that players are in the match roster.');
       return;
     }
 
-    const lockedRedScore = lockedRed.reduce((sum, uid) => sum + getScore(uid), 0);
-    const lockedWhiteScore = lockedWhite.reduce((sum, uid) => sum + getScore(uid), 0);
-    const remainingTotal = remaining.reduce((sum, uid) => sum + getScore(uid), 0);
-    const totalScore = lockedRedScore + lockedWhiteScore + remainingTotal;
-    const targetRedFromRemaining = (totalScore / 2) - lockedRedScore;
-
-    let bestCombo: string[] = [];
-    let bestDiff = Infinity;
-
-    const findBest = (start: number, current: string[], currentScore: number) => {
-      if (current.length === redToFill) {
-        const diff = Math.abs(currentScore - targetRedFromRemaining);
-        if (diff < bestDiff) {
-          bestDiff = diff;
-          bestCombo = [...current];
-        }
-        return;
-      }
-      const needed = redToFill - current.length;
-      for (let i = start; i <= remaining.length - needed; i++) {
-        current.push(remaining[i]);
-        findBest(i + 1, current, currentScore + getScore(remaining[i]));
-        current.pop();
-      }
-    };
-
-    findBest(0, [], 0);
-
-    const redSet = new Set(bestCombo);
-    const whiteFromRemaining = remaining.filter(uid => !redSet.has(uid));
-
-    setTeamRed([...lockedRed, ...bestCombo]);
-    setTeamWhite([...lockedWhite, ...whiteFromRemaining]);
+    setTeamRed(balanced.teamRed);
+    setTeamWhite(balanced.teamWhite);
+    setTeamRedPositions(balanced.redPositions);
+    setTeamWhitePositions(balanced.whitePositions);
+    setTeamRedStrength(balanced.redStrength);
+    setTeamWhiteStrength(balanced.whiteStrength);
+    setSplitScore(balanced.splitScore);
     setUnassigned([]);
   };
 
@@ -452,6 +436,11 @@ export const ManageMatch: React.FC = () => {
       await updateDoc(doc(db, 'matches', matchId), {
         teamRed,
         teamWhite,
+        teamRedPositions,
+        teamWhitePositions,
+        teamRedStrength,
+        teamWhiteStrength,
+        splitScore,
         status: teamRed.length > 0 || teamWhite.length > 0 ? 'teams_generated' : 'active'
       });
       alert('Teams saved successfully!');
@@ -617,12 +606,19 @@ export const ManageMatch: React.FC = () => {
     const timeAMPM = `${hrs12}:${min} ${ampm}`;
     const d = new Date(match.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
 
-    const getPlayerName = (uid: string) => uid.startsWith('guest:') ? uid.split(':')[1] : (players[uid]?.name || 'Unknown');
+    const getPlayerLine = (uid: string) => {
+      const name = uid.startsWith('guest:') ? uid.split(':')[1] : (players[uid]?.name || 'Unknown');
+      const pos = teamRedPositions[uid] || teamWhitePositions[uid];
+      return pos ? `• [${pos}] ${name}` : `• ${name}`;
+    };
     
-    let redNames = teamRed.map((uid, i) => `${i + 1}. ${getPlayerName(uid)}`);
-    let whiteNames = teamWhite.map((uid, i) => `${i + 1}. ${getPlayerName(uid)}`);
+    let redNames = teamRed.map(getPlayerLine);
+    let whiteNames = teamWhite.map(getPlayerLine);
+
+    const redHeader = teamRedStrength !== null ? `🔴 *TEAM RED* (Strength: ${teamRedStrength})` : `🔴 *TEAM RED*`;
+    const whiteHeader = teamWhiteStrength !== null ? `⚪ *TEAM WHITE* (Strength: ${teamWhiteStrength})` : `⚪ *TEAM WHITE*`;
     
-    const text = `🔥 *Match Teams are SET!* 🔥\n\n📅 ${d}  |  ⏰ ${timeAMPM}\n📍 ${match.venue}\n🗺️ Map: ${match.mapsLink}\n\n🔴 *TEAM RED*\n${redNames.join('\n')}\n\n⚪ *TEAM WHITE*\n${whiteNames.join('\n')}\n\nSee you on the pitch! ⚽`;
+    const text = `🔥 *Match Teams are SET!* 🔥\n\n📅 ${d}  |  ⏰ ${timeAMPM}\n📍 ${match.venue}\n🗺️ Map: ${match.mapsLink}\n\n${redHeader}\n${redNames.join('\n')}\n\n${whiteHeader}\n${whiteNames.join('\n')}\n\nSee you on the pitch! ⚽`;
 
     navigator.clipboard.writeText(text).then(() => {
       alert("Teams copied to clipboard! Paste this into your WhatsApp group.");
@@ -656,7 +652,7 @@ export const ManageMatch: React.FC = () => {
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <Navbar />
       
-      <main className="flex-grow max-w-6xl w-full mx-auto p-4 sm:p-6">
+      <main className="flex-grow max-w-screen-2xl w-full mx-auto p-4 sm:p-6 lg:p-8">
         <div className="flex flex-col sm:flex-row items-center justify-between mb-6 gap-4">
           <button onClick={() => navigate('/admin')} className="flex items-center text-gray-600 hover:text-gray-900 font-medium self-start sm:self-auto">
             <ArrowLeft className="w-5 h-5 mr-1" /> Back to Dashboard
@@ -713,6 +709,32 @@ export const ManageMatch: React.FC = () => {
             <div className="text-xs font-bold text-gray-500 uppercase tracking-widest">Paid</div>
           </div>
         </div>
+
+        {(teamRedStrength !== null && teamWhiteStrength !== null) && (
+          <div className="bg-gradient-to-r from-red-50 via-white to-slate-50 border border-gray-200 rounded-xl p-4 mb-6 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
+            <div className="flex items-center gap-6 text-center sm:text-left">
+              <div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-red-600 block">Team Red</span>
+                <span className="text-2xl font-black text-red-800">{teamRedStrength} <span className="text-xs font-normal text-red-500">strength</span></span>
+              </div>
+              <div className="text-gray-300 font-black text-lg">VS</div>
+              <div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block">Team White</span>
+                <span className="text-2xl font-black text-slate-800">{teamWhiteStrength} <span className="text-xs font-normal text-slate-500">strength</span></span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2.5 text-xs">
+              <div className="bg-white px-3 py-1.5 rounded-lg border border-gray-200 shadow-2xs font-sans">
+                <span className="text-gray-500 font-medium">Rating Diff:</span> <b className="text-gray-900 font-mono font-bold">{Math.round(Math.abs(teamRedStrength - teamWhiteStrength) * 10) / 10}</b>
+              </div>
+              {splitScore !== null && (
+                <div className="bg-purple-100 text-purple-900 px-3 py-1.5 rounded-lg border border-purple-200 font-bold font-sans">
+                  Split Score: <span className="font-mono">{splitScore}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         <DndContext sensors={sensors} collisionDetection={pointerWithin} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -804,13 +826,27 @@ export const ManageMatch: React.FC = () => {
             {/* Team Red */}
             <div className="bg-red-50 rounded-xl p-4 border border-red-100 flex flex-col h-full min-h-[400px]">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="font-bold text-red-800 flex items-center gap-2">
-                  <Shield className="w-5 h-5 text-red-600" /> Team Red
-                </h3>
+                <div>
+                  <h3 className="font-bold text-red-800 flex items-center gap-2">
+                    <Shield className="w-5 h-5 text-red-600" /> Team Red
+                  </h3>
+                  {teamRedStrength !== null && (
+                    <div className="text-xs font-black text-red-700 mt-0.5">Strength: {teamRedStrength}</div>
+                  )}
+                </div>
                 <span className="bg-red-200 text-red-800 text-xs font-bold px-2 py-1 rounded-full">{teamRed.length}</span>
               </div>
               <DroppableContainer id="teamRed" items={teamRed}>
-                {teamRed.map(uid => players[uid] ? <SortablePlayer key={uid} user={players[uid]} disabled={isLocked} onRemove={handleRemoveFromRoster} paymentStatus={getPaymentStatus(uid)} /> : null)}
+                {teamRed.map(uid => players[uid] ? (
+                  <SortablePlayer 
+                    key={uid} 
+                    user={players[uid]} 
+                    assignedPosition={teamRedPositions[uid]}
+                    disabled={isLocked} 
+                    onRemove={handleRemoveFromRoster} 
+                    paymentStatus={getPaymentStatus(uid)} 
+                  />
+                ) : null)}
                 {teamRed.length === 0 && (
                   <div className="text-center text-red-300 text-sm mt-8 border-2 border-dashed border-red-200 rounded-lg py-8">
                     Drag players here
@@ -822,13 +858,27 @@ export const ManageMatch: React.FC = () => {
             {/* Team White */}
             <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 flex flex-col h-full min-h-[400px]">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="font-bold text-slate-700 flex items-center gap-2">
-                  <Shield className="w-5 h-5 text-slate-500" /> Team White
-                </h3>
+                <div>
+                  <h3 className="font-bold text-slate-700 flex items-center gap-2">
+                    <Shield className="w-5 h-5 text-slate-500" /> Team White
+                  </h3>
+                  {teamWhiteStrength !== null && (
+                    <div className="text-xs font-black text-slate-600 mt-0.5">Strength: {teamWhiteStrength}</div>
+                  )}
+                </div>
                 <span className="bg-slate-200 text-slate-700 text-xs font-bold px-2 py-1 rounded-full">{teamWhite.length}</span>
               </div>
               <DroppableContainer id="teamWhite" items={teamWhite}>
-                {teamWhite.map(uid => players[uid] ? <SortablePlayer key={uid} user={players[uid]} disabled={isLocked} onRemove={handleRemoveFromRoster} paymentStatus={getPaymentStatus(uid)} /> : null)}
+                {teamWhite.map(uid => players[uid] ? (
+                  <SortablePlayer 
+                    key={uid} 
+                    user={players[uid]} 
+                    assignedPosition={teamWhitePositions[uid]}
+                    disabled={isLocked} 
+                    onRemove={handleRemoveFromRoster} 
+                    paymentStatus={getPaymentStatus(uid)} 
+                  />
+                ) : null)}
                 {teamWhite.length === 0 && (
                   <div className="text-center text-slate-400 text-sm mt-8 border-2 border-dashed border-slate-300 rounded-lg py-8">
                     Drag players here

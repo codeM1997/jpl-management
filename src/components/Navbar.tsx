@@ -16,7 +16,7 @@ export const Navbar: React.FC = () => {
 
   return (
     <header className="bg-emerald-700 text-white shadow-md sticky top-0 z-50">
-      <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
+      <div className={`${isAdminRoute ? 'max-w-screen-2xl' : 'max-w-4xl'} mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between`}>
         <div className="flex items-center space-x-2 cursor-pointer" onClick={() => navigate('/')}>
           <span className="text-2xl">⚽</span>
           <div>

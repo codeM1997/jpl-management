@@ -11,7 +11,9 @@ export const Join: React.FC = () => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
-  const [positions, setPositions] = useState<Position[]>(['MID']);
+  const [primaryPos, setPrimaryPos] = useState<Position>('MID');
+  const [secondaryPos, setSecondaryPos] = useState<Position | ''>('');
+  const [happyAnywhere, setHappyAnywhere] = useState(false);
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -33,6 +35,11 @@ export const Join: React.FC = () => {
       const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), pin);
       const user = userCredential.user;
 
+      const preferredList: Position[] = [primaryPos];
+      if (secondaryPos && secondaryPos !== primaryPos) {
+        preferredList.push(secondaryPos);
+      }
+
       // 2. Create Firestore user profile
       const userDocRef = doc(db, 'users', user.uid);
       await setDoc(userDocRef, {
@@ -42,11 +49,21 @@ export const Join: React.FC = () => {
         phone: phone.trim(),
         role: 'pending', // Awaits admin approval
         tier: null,
-        preferredPos: positions,
+        primaryPosition: primaryPos,
+        secondaryPosition: secondaryPos || null,
+        happyAnywhere,
+        preferredPos: preferredList,
+        pace: 5,
+        stamina: 5,
+        dribbling: 5,
+        passing: 5,
+        finishing: 5,
+        defending: 5,
+        gameIQ: 5,
+        gkRating: primaryPos === 'GK' || secondaryPos === 'GK' ? 5 : null,
         attackRating: 5,
         defRating: 5,
         passingRating: 5,
-        gkRating: 5,
         iqRating: 5,
         fcmToken: null,
         createdAt: serverTimestamp()
@@ -113,25 +130,61 @@ export const Join: React.FC = () => {
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Preferred Positions (Select multiple)</label>
-              <div className="flex gap-2">
-                {(['GK', 'DEF', 'MID', 'ST'] as Position[]).map(pos => (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Primary Position *</label>
+                <div className="flex gap-2">
+                  {(['GK', 'DEF', 'MID', 'FWD'] as Position[]).map(pos => (
+                    <button
+                      key={pos}
+                      type="button"
+                      onClick={() => setPrimaryPos(pos)}
+                      className={`flex-1 py-2 text-xs font-bold rounded-lg border transition-colors ${primaryPos === pos ? 'bg-emerald-600 border-emerald-600 text-white shadow-sm' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'}`}
+                    >
+                      {pos}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Secondary Position (Optional)</label>
+                <div className="flex gap-2">
                   <button
-                    key={pos}
                     type="button"
-                    onClick={() => {
-                      if (positions.includes(pos)) {
-                        if (positions.length > 1) setPositions(positions.filter(p => p !== pos));
-                      } else {
-                        setPositions([...positions, pos]);
-                      }
-                    }}
-                    className={`flex-1 py-2 px-1 text-xs font-bold rounded-lg border transition-colors ${positions.includes(pos) ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'}`}
+                    onClick={() => setSecondaryPos('')}
+                    className={`flex-1 py-2 text-xs font-bold rounded-lg border transition-colors ${secondaryPos === '' ? 'bg-gray-700 border-gray-700 text-white shadow-sm' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'}`}
                   >
-                    {pos}
+                    None
                   </button>
-                ))}
+                  {(['GK', 'DEF', 'MID', 'FWD'] as Position[]).map(pos => (
+                    <button
+                      key={pos}
+                      type="button"
+                      disabled={pos === primaryPos}
+                      onClick={() => setSecondaryPos(pos)}
+                      className={`flex-1 py-2 text-xs font-bold rounded-lg border transition-colors ${
+                        pos === primaryPos ? 'opacity-30 cursor-not-allowed bg-gray-100 border-gray-200 text-gray-400' :
+                        secondaryPos === pos ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
+                      }`}
+                    >
+                      {pos}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 bg-emerald-50 p-3 rounded-lg border border-emerald-100">
+                <input
+                  id="happyAnywhere"
+                  type="checkbox"
+                  checked={happyAnywhere}
+                  onChange={(e) => setHappyAnywhere(e.target.checked)}
+                  className="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500"
+                />
+                <label htmlFor="happyAnywhere" className="text-xs font-medium text-emerald-900 cursor-pointer select-none">
+                  <b>Happy to play anywhere?</b> <span className="text-emerald-700 block text-[11px]">Helps the algorithm balance teams smoothly (×0.95 flexibility)</span>
+                </label>
               </div>
             </div>
 

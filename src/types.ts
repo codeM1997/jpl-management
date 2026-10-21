@@ -1,5 +1,5 @@
 export type UserRole = 'admin' | 'organizer' | 'player' | 'pending';
-export type Position = 'GK' | 'DEF' | 'MID' | 'ST';
+export type Position = 'GK' | 'DEF' | 'MID' | 'FWD' | 'ST';
 export type Tier = 1 | 2 | 3;
 
 export interface AppUser {
@@ -9,12 +9,29 @@ export interface AppUser {
   phone: string;
   role: UserRole;
   tier: Tier | null;
-  preferredPos: Position[];
-  attackRating: number; // 1-10
-  defRating: number;    // 1-10
+  
+  // Positions
+  primaryPosition?: Position;
+  secondaryPosition?: Position;
+  happyAnywhere?: boolean;
+  preferredPos?: Position[]; // legacy
+
+  // 7 Core attributes + GK (1-10)
+  pace?: number;
+  stamina?: number;
+  dribbling?: number;
+  passing?: number;
+  finishing?: number;
+  defending?: number;
+  gameIQ?: number;
+  gkRating?: number | null;
+
+  // Legacy rating fields
+  attackRating?: number; // 1-10
+  defRating?: number;    // 1-10
   passingRating?: number; // 1-10
-  gkRating?: number;      // 1-10
   iqRating?: number;      // 1-10
+
   fcmToken?: string | null;
   createdAt: any;
 }
@@ -37,6 +54,11 @@ export interface Match {
   waitlist: string[]; // Array of UIDs
   teamRed: string[]; // Array of UIDs
   teamWhite: string[]; // Array of UIDs
+  teamRedPositions?: Record<string, Position>;
+  teamWhitePositions?: Record<string, Position>;
+  teamRedStrength?: number;
+  teamWhiteStrength?: number;
+  splitScore?: number;
   paidPlayers?: string[]; // Legacy array of UIDs who have paid (can keep for manual cash overrides)
   pricePerPerson?: number;
   requirePaymentTier1?: boolean;
@@ -51,3 +73,4 @@ export interface Match {
   };
   createdAt: any;
 }
+
