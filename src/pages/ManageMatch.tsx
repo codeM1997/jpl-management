@@ -603,8 +603,8 @@ export const ManageMatch: React.FC = () => {
     let redNames = teamRed.map(getPlayerLine);
     let whiteNames = teamWhite.map(getPlayerLine);
 
-    const redHeader = teamRedStrength !== null ? `🔴 *TEAM RED* (Strength: ${teamRedStrength})` : `🔴 *TEAM RED*`;
-    const whiteHeader = teamWhiteStrength !== null ? `⚪ *TEAM WHITE* (Strength: ${teamWhiteStrength})` : `⚪ *TEAM WHITE*`;
+    const redHeader = `🔴 *TEAM RED*`;
+    const whiteHeader = `⚪ *TEAM WHITE*`;
     
     const text = `🔥 *Match Teams are SET!* 🔥\n\n📅 ${d}  |  ⏰ ${timeAMPM}\n📍 ${match.venue}\n🗺️ Map: ${match.mapsLink}\n\n${redHeader}\n${redNames.join('\n')}\n\n${whiteHeader}\n${whiteNames.join('\n')}\n\nSee you on the pitch! ⚽`;
 

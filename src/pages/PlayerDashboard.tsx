@@ -276,12 +276,9 @@ export const PlayerDashboard: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2">
             {/* Team Red */}
             <div className="p-6 md:border-r border-gray-200 bg-red-50">
-              <h3 className="text-2xl font-black text-red-800 text-center mb-1 uppercase tracking-wider flex items-center justify-center gap-2">
+              <h3 className="text-2xl font-black text-red-800 text-center mb-4 uppercase tracking-wider flex items-center justify-center gap-2">
                 <span className="w-4 h-4 rounded-full bg-red-600 block"></span> Team Red
               </h3>
-              {typeof upcomingMatch.teamRedStrength === 'number' && (
-                <p className="text-xs font-black text-red-600 text-center mb-4">Strength: {upcomingMatch.teamRedStrength}</p>
-              )}
               <div className="space-y-3">
                 {upcomingMatch.teamRed.map((uid, i) => {
                   const pos = upcomingMatch.teamRedPositions?.[uid];
@@ -305,12 +302,9 @@ export const PlayerDashboard: React.FC = () => {
 
             {/* Team White */}
             <div className="p-6 bg-slate-50">
-              <h3 className="text-2xl font-black text-slate-700 text-center mb-1 uppercase tracking-wider flex items-center justify-center gap-2">
+              <h3 className="text-2xl font-black text-slate-700 text-center mb-4 uppercase tracking-wider flex items-center justify-center gap-2">
                 <span className="w-4 h-4 rounded-full bg-white border-2 border-slate-300 block"></span> Team White
               </h3>
-              {typeof upcomingMatch.teamWhiteStrength === 'number' && (
-                <p className="text-xs font-black text-slate-600 text-center mb-4">Strength: {upcomingMatch.teamWhiteStrength}</p>
-              )}
               <div className="space-y-3">
                 {upcomingMatch.teamWhite.map((uid, i) => {
                   const pos = upcomingMatch.teamWhitePositions?.[uid];
