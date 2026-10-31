@@ -9,12 +9,13 @@ import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSo
 import { CSS } from '@dnd-kit/utilities';
 import { ArrowLeft, Users, Shield, Save, X, PlusCircle, Share2, Sparkles } from 'lucide-react';
 import { PaymentProofImage } from '../components/PaymentProofImage';
-import { generateBalancedTeams, evaluateSplit, normalizePlayer, getPlayerEffectiveRating } from '../utils/ratingEngine';
+import { generateBalancedTeams, normalizePlayer, getPlayerEffectiveRating } from '../utils/ratingEngine';
 
 // --- Sortable Player Item Component ---
 interface SortablePlayerProps {
   user: AppUser;
   assignedPosition?: Position;
+  onPositionChange?: (uid: string, newPos: Position) => void;
   disabled?: boolean;
   onRemove?: (uid: string) => void;
   isPaid?: boolean;
@@ -22,7 +23,7 @@ interface SortablePlayerProps {
   onTogglePaid?: (uid: string) => void;
 }
 
-const SortablePlayer: React.FC<SortablePlayerProps> = ({ user, assignedPosition, disabled, onRemove, paymentStatus }) => {
+const SortablePlayer: React.FC<SortablePlayerProps> = ({ user, assignedPosition, onPositionChange, disabled, onRemove, paymentStatus }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: user.uid, disabled });
   const norm = normalizePlayer(user);
   const effectiveInfo = assignedPosition ? getPlayerEffectiveRating(norm, assignedPosition) : null;
@@ -57,11 +58,27 @@ const SortablePlayer: React.FC<SortablePlayerProps> = ({ user, assignedPosition,
         className="flex-grow min-w-0 cursor-grab active:cursor-grabbing mr-2 flex flex-col justify-center h-full"
       >
         <div className="font-bold text-gray-900 text-sm flex items-center gap-1.5 truncate">
-          {assignedPosition && (
+          {assignedPosition && onPositionChange && !disabled ? (
+            <select
+              value={assignedPosition}
+              onChange={(e) => onPositionChange(user.uid, e.target.value as Position)}
+              onPointerDown={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+              className={`px-1 py-0.5 rounded text-[10px] font-black border uppercase tracking-wider shrink-0 cursor-pointer focus:outline-none focus:ring-1 focus:ring-emerald-500 shadow-2xs transition hover:brightness-95 ${getPosBadgeColor(assignedPosition)}`}
+              title="Click to change player position"
+            >
+              <option value="GK">GK</option>
+              <option value="DEF">DEF</option>
+              <option value="MID">MID</option>
+              <option value="FWD">FWD</option>
+              <option value="ST">ST</option>
+            </select>
+          ) : assignedPosition ? (
             <span className={`px-1.5 py-0.5 rounded text-[10px] font-black border uppercase tracking-wider shrink-0 ${getPosBadgeColor(assignedPosition)}`}>
               {assignedPosition}
             </span>
-          )}
+          ) : null}
           <span className="truncate">{user.name}</span>
           {norm.happyAnywhere && (
             <span className="text-[9px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-1 rounded font-semibold shrink-0">
@@ -149,17 +166,67 @@ export const ManageMatch: React.FC = () => {
   const [teamRed, setTeamRed] = useState<string[]>([]);
   const [teamWhite, setTeamWhite] = useState<string[]>([]);
 
-  // Positions & strengths always reflect the current teams, including manual drags
-  const lineup = useMemo(() => {
-    if (teamRed.length === 0 && teamWhite.length === 0) return null;
-    const norm = (uids: string[]) => uids.filter(uid => players[uid]).map(uid => normalizePlayer(players[uid]));
-    return evaluateSplit(norm(teamRed), norm(teamWhite));
-  }, [teamRed, teamWhite, players]);
-  const teamRedPositions = lineup?.redPositions ?? {};
-  const teamWhitePositions = lineup?.whitePositions ?? {};
-  const teamRedStrength = lineup?.redStrength ?? null;
-  const teamWhiteStrength = lineup?.whiteStrength ?? null;
-  const splitScore = lineup?.splitScore ?? null;
+  // Custom / Assigned Positions State
+  const [assignedPositions, setAssignedPositions] = useState<Record<string, Position>>({});
+  const [autoBalanceScore, setAutoBalanceScore] = useState<number | null>(null);
+
+  const teamRedPositions = useMemo(() => {
+    const res: Record<string, Position> = {};
+    teamRed.forEach(uid => {
+      res[uid] = assignedPositions[uid] || (players[uid] ? normalizePlayer(players[uid]).primaryPosition : 'MID');
+    });
+    return res;
+  }, [teamRed, assignedPositions, players]);
+
+  const teamWhitePositions = useMemo(() => {
+    const res: Record<string, Position> = {};
+    teamWhite.forEach(uid => {
+      res[uid] = assignedPositions[uid] || (players[uid] ? normalizePlayer(players[uid]).primaryPosition : 'MID');
+    });
+    return res;
+  }, [teamWhite, assignedPositions, players]);
+
+  const teamRedStrength = useMemo(() => {
+    if (teamRed.length === 0) return null;
+    let total = 0;
+    teamRed.forEach(uid => {
+      const p = players[uid];
+      if (p) {
+        const norm = normalizePlayer(p);
+        const pos = teamRedPositions[uid];
+        total += getPlayerEffectiveRating(norm, pos).effectiveRating;
+      }
+    });
+    return Math.round(total * 10) / 10;
+  }, [teamRed, teamRedPositions, players]);
+
+  const teamWhiteStrength = useMemo(() => {
+    if (teamWhite.length === 0) return null;
+    let total = 0;
+    teamWhite.forEach(uid => {
+      const p = players[uid];
+      if (p) {
+        const norm = normalizePlayer(p);
+        const pos = teamWhitePositions[uid];
+        total += getPlayerEffectiveRating(norm, pos).effectiveRating;
+      }
+    });
+    return Math.round(total * 10) / 10;
+  }, [teamWhite, teamWhitePositions, players]);
+
+  const splitScore = useMemo(() => {
+    if (teamRedStrength === null || teamWhiteStrength === null) return null;
+    if (autoBalanceScore !== null) return autoBalanceScore;
+    return Math.round(Math.abs(teamRedStrength - teamWhiteStrength) * 10) / 10;
+  }, [teamRedStrength, teamWhiteStrength, autoBalanceScore]);
+
+  const handlePositionChange = (uid: string, newPosition: Position) => {
+    setAssignedPositions(prev => ({
+      ...prev,
+      [uid]: newPosition
+    }));
+    setAutoBalanceScore(null);
+  };
   
   const [saving, setSaving] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -269,8 +336,17 @@ export const ManageMatch: React.FC = () => {
           
           setPlayers(userMap);
           
-          // Populate DND states ONLY on first load
+          // Populate DND states and saved positions ONLY on first load
           if (!dndInitialized.current) {
+            if (m.teamRedPositions || m.teamWhitePositions) {
+              setAssignedPositions({
+                ...(m.teamRedPositions || {}),
+                ...(m.teamWhitePositions || {})
+              });
+            }
+            if (m.splitScore !== undefined && m.splitScore !== null) {
+              setAutoBalanceScore(m.splitScore);
+            }
             if (m.teamRed.length > 0 || m.teamWhite.length > 0) {
               setTeamRed(m.teamRed);
               setTeamWhite(m.teamWhite);
@@ -359,6 +435,16 @@ export const ManageMatch: React.FC = () => {
       if (overContainer === 'unassigned') setUnassigned(prev => insertInto(prev));
       if (overContainer === 'teamRed') setTeamRed(prev => insertInto(prev));
       if (overContainer === 'teamWhite') setTeamWhite(prev => insertInto(prev));
+
+      setAutoBalanceScore(null);
+
+      if ((overContainer === 'teamRed' || overContainer === 'teamWhite') && !assignedPositions[sourceId]) {
+        const naturalPos = players[sourceId] ? normalizePlayer(players[sourceId]).primaryPosition : 'MID';
+        setAssignedPositions(prev => ({
+          ...prev,
+          [sourceId]: prev[sourceId] || naturalPos
+        }));
+      }
     };
 
     moveItem(activeId, overId);
@@ -393,6 +479,8 @@ export const ManageMatch: React.FC = () => {
     setTeamRed([]);
     setTeamWhite([]);
     setUnassigned([...match.roster]); // Bring everyone back to unassigned
+    setAssignedPositions({});
+    setAutoBalanceScore(null);
   };
 
   const handleAutoGenerate = () => {
@@ -415,6 +503,11 @@ export const ManageMatch: React.FC = () => {
     setTeamRed(balanced.teamRed);
     setTeamWhite(balanced.teamWhite);
     setUnassigned([]);
+    setAssignedPositions({
+      ...balanced.redPositions,
+      ...balanced.whitePositions
+    });
+    setAutoBalanceScore(balanced.splitScore);
   };
 
   const handleSave = async () => {
@@ -831,6 +924,7 @@ export const ManageMatch: React.FC = () => {
                     key={uid} 
                     user={players[uid]} 
                     assignedPosition={teamRedPositions[uid]}
+                    onPositionChange={handlePositionChange}
                     disabled={isLocked} 
                     onRemove={handleRemoveFromRoster} 
                     paymentStatus={getPaymentStatus(uid)} 
@@ -863,6 +957,7 @@ export const ManageMatch: React.FC = () => {
                     key={uid} 
                     user={players[uid]} 
                     assignedPosition={teamWhitePositions[uid]}
+                    onPositionChange={handlePositionChange}
                     disabled={isLocked} 
                     onRemove={handleRemoveFromRoster} 
                     paymentStatus={getPaymentStatus(uid)} 
