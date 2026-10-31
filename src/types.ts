@@ -73,7 +73,16 @@ export interface Match {
       uploadedAt: string;
     }
   };
+  scoreRed?: number;
+  scoreWhite?: number;
+  playerStats?: Record<string, PlayerMatchStats>;
   createdAt: any;
+}
+
+export interface PlayerMatchStats {
+  goals: number;
+  assists: number;
+  ownGoals?: number;
 }
 
 export interface UpiPayee {

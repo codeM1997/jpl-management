@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { collection, query, orderBy, onSnapshot, doc, runTransaction, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import type { Match } from '../types';
-import { Calendar, MapPin, Clock, CheckCircle, AlertCircle, XCircle, Users } from 'lucide-react';
+import { Calendar, MapPin, Clock, CheckCircle, AlertCircle, XCircle, Users, Trophy } from 'lucide-react';
 import { PaymentModal } from '../components/PaymentModal';
 
 export const PlayerDashboard: React.FC = () => {
@@ -545,6 +545,27 @@ export const PlayerDashboard: React.FC = () => {
                     <p className="text-gray-500 text-sm mt-1 flex items-center gap-1">
                       <MapPin className="w-4 h-4" /> {m.venue}
                     </p>
+                    {(m.scoreRed !== undefined && m.scoreWhite !== undefined) && (
+                      <div className="mt-3 p-2.5 bg-gray-50 rounded-lg border border-gray-200 flex items-center justify-between">
+                        <div className="font-bold text-xs text-gray-800 flex items-center gap-1.5">
+                          <Trophy className="w-3.5 h-3.5 text-amber-500" />
+                          <span>Red {m.scoreRed} - {m.scoreWhite} White</span>
+                        </div>
+                        {userData && m.playerStats?.[userData.uid] && (
+                          <div className="text-[11px] font-bold text-emerald-700 flex items-center gap-1.5 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                            {m.playerStats[userData.uid].goals > 0 && (
+                              <span>⚽ {m.playerStats[userData.uid].goals}</span>
+                            )}
+                            {m.playerStats[userData.uid].assists > 0 && (
+                              <span>👟 {m.playerStats[userData.uid].assists}</span>
+                            )}
+                            {m.playerStats[userData.uid].goals === 0 && m.playerStats[userData.uid].assists === 0 && (
+                              <span className="text-gray-500 font-normal">Played</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                   {m.youtubeLink && (
                     <a 

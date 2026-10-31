@@ -2,13 +2,14 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { doc, getDocs, updateDoc, collection, query, where, onSnapshot, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import type { Match, AppUser, Position } from '../types';
+import type { Match, AppUser, Position, PlayerMatchStats } from '../types';
 import { Navbar } from '../components/Navbar';
 import { DndContext, pointerWithin, KeyboardSensor, PointerSensor, useSensor, useSensors, DragOverlay, type DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ArrowLeft, Users, Shield, Save, X, PlusCircle, Share2, Sparkles } from 'lucide-react';
+import { ArrowLeft, Users, Shield, Save, X, PlusCircle, Share2, Sparkles, Trophy } from 'lucide-react';
 import { PaymentProofImage } from '../components/PaymentProofImage';
+import { MatchScoreModal } from '../components/MatchScoreModal';
 import { generateBalancedTeams, normalizePlayer, getPlayerEffectiveRating } from '../utils/ratingEngine';
 
 // --- Sortable Player Item Component ---
@@ -228,9 +229,28 @@ export const ManageMatch: React.FC = () => {
     setAutoBalanceScore(null);
   };
   
+  const [showScoreModal, setShowScoreModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [guestName, setGuestName] = useState('');
+
+  const handleSaveScoreAndStats = async (data: {
+    scoreRed: number;
+    scoreWhite: number;
+    playerStats: Record<string, PlayerMatchStats>;
+    markCompleted?: boolean;
+  }) => {
+    if (!matchId) return;
+    const updatePayload: any = {
+      scoreRed: data.scoreRed,
+      scoreWhite: data.scoreWhite,
+      playerStats: data.playerStats,
+    };
+    if (data.markCompleted) {
+      updatePayload.status = 'completed';
+    }
+    await updateDoc(doc(db, 'matches', matchId), updatePayload);
+  };
   
   const [allApprovedUsers, setAllApprovedUsers] = useState<AppUser[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -771,6 +791,13 @@ export const ManageMatch: React.FC = () => {
               <Share2 className="w-4 h-4" /> Share Teams
             </button>
             <button 
+              onClick={() => setShowScoreModal(true)} 
+              className="flex-1 sm:flex-none bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg font-bold flex items-center justify-center gap-2 shadow-sm transition"
+              title="Record match score, player goals, and assists"
+            >
+              <Trophy className="w-4 h-4" /> {match.scoreRed !== undefined && match.scoreWhite !== undefined ? 'Edit Result' : 'Record Score'}
+            </button>
+            <button 
               onClick={handlePublish} 
               disabled={saving || match.status === 'completed' || (!isPublished && !canPublish)}
               className={`flex-1 sm:flex-none px-4 py-2 rounded-lg font-bold flex items-center justify-center gap-2 shadow-sm transition disabled:opacity-50 ${isPublished ? 'bg-amber-500 hover:bg-amber-600 text-white' : 'bg-indigo-600 hover:bg-indigo-700 text-white'}`}
@@ -780,6 +807,31 @@ export const ManageMatch: React.FC = () => {
             </button>
           </div>
         </div>
+
+        {/* Final Score Banner if recorded */}
+        {(match.scoreRed !== undefined && match.scoreWhite !== undefined) && (
+          <div className="bg-gradient-to-r from-red-600 via-gray-900 to-slate-700 text-white rounded-xl p-5 mb-6 shadow-md flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-white/10 rounded-xl backdrop-blur-xs">
+                <Trophy className="w-6 h-6 text-amber-400" />
+              </div>
+              <div>
+                <span className="text-xs uppercase tracking-wider font-bold text-gray-300">Final Match Result</span>
+                <div className="text-2xl sm:text-3xl font-black tracking-tight flex items-center gap-3 mt-0.5">
+                  <span className="text-red-300">Team Red {match.scoreRed}</span>
+                  <span className="text-gray-400 text-lg">-</span>
+                  <span className="text-slate-200">{match.scoreWhite} Team White</span>
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowScoreModal(true)}
+              className="bg-white/15 hover:bg-white/25 text-white px-4 py-2 rounded-lg text-xs font-bold transition border border-white/20 shrink-0 flex items-center gap-1.5"
+            >
+              <Trophy className="w-3.5 h-3.5" /> Edit Score & Stats
+            </button>
+          </div>
+        )}
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6 flex justify-between items-center">
           <div>
@@ -1130,6 +1182,15 @@ export const ManageMatch: React.FC = () => {
           </DragOverlay>
 
         </DndContext>
+
+        {showScoreModal && (
+          <MatchScoreModal
+            match={match}
+            players={players}
+            onClose={() => setShowScoreModal(false)}
+            onSave={handleSaveScoreAndStats}
+          />
+        )}
       </main>
     </div>
   );

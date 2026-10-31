@@ -789,6 +789,11 @@ export const AdminMatches: React.FC = () => {
                 </div>
                 
                 <div className="flex flex-wrap items-center gap-3">
+                  {(match.scoreRed !== undefined && match.scoreWhite !== undefined) && (
+                    <span className="px-2.5 py-1 rounded-full text-xs font-black bg-amber-50 text-amber-800 border border-amber-200">
+                      Red {match.scoreRed} - {match.scoreWhite} White
+                    </span>
+                  )}
                   <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${
                     match.status === 'dormant' ? 'bg-gray-100 text-gray-600' : 
                     match.status === 'completed' ? 'bg-purple-100 text-purple-700' :
