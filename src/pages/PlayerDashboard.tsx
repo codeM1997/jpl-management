@@ -3,9 +3,20 @@ import { Navbar } from '../components/Navbar';
 import { useAuth } from '../context/AuthContext';
 import { collection, query, orderBy, onSnapshot, doc, runTransaction, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
-import type { Match } from '../types';
-import { Calendar, MapPin, Clock, CheckCircle, AlertCircle, XCircle, Users, Trophy } from 'lucide-react';
+import type { Match, Position } from '../types';
+import { Calendar, MapPin, Clock, CheckCircle, AlertCircle, XCircle, Users, Trophy, ChevronDown, ChevronUp, Shield } from 'lucide-react';
 import { PaymentModal } from '../components/PaymentModal';
+
+const getPosBadgeColor = (pos?: Position | string) => {
+  switch (pos) {
+    case 'GK': return 'bg-purple-100 text-purple-800 border-purple-200';
+    case 'DEF': return 'bg-blue-100 text-blue-800 border-blue-200';
+    case 'MID': return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+    case 'FWD':
+    case 'ST': return 'bg-amber-100 text-amber-800 border-amber-200';
+    default: return 'bg-gray-100 text-gray-700 border-gray-200';
+  }
+};
 
 export const PlayerDashboard: React.FC = () => {
   const { userData } = useAuth();
@@ -14,9 +25,17 @@ export const PlayerDashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(Date.now());
   const [teamNames, setTeamNames] = useState<Record<string, string>>({});
+  const [expandedMatchIds, setExpandedMatchIds] = useState<Record<string, boolean>>({});
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [pendingIntent, setPendingIntent] = useState<'in' | 'out' | null>(null);
   const [isRSVPing, setIsRSVPing] = useState(false);
+
+  const toggleMatchAccordion = (matchId: string) => {
+    setExpandedMatchIds(prev => ({
+      ...prev,
+      [matchId]: !prev[matchId]
+    }));
+  };
 
   useEffect(() => {
     // Update current time every second for precise unlock logic
@@ -45,27 +64,35 @@ export const PlayerDashboard: React.FC = () => {
     return () => unsubscribe();
   }, [userData]);
 
-  // Fetch user names for roster, waitlist, and teams
+  // Fetch user names for roster, waitlist, teams, and history matches
   useEffect(() => {
     const fetchNames = async () => {
-      if (!upcomingMatch) return;
-
-      const isPublished = upcomingMatch.status === 'published' || upcomingMatch.status === 'teams_generated';
-      const isRoster = userData?.uid ? upcomingMatch.roster.includes(userData.uid) : false;
-      const isWaitlist = userData?.uid ? upcomingMatch.waitlist.includes(userData.uid) : false;
-      
-      const shouldFetchRoster = isRoster || isWaitlist;
-
       const uidsToFetch = new Set<string>();
 
-      if (shouldFetchRoster) {
-        upcomingMatch.roster.forEach(uid => uidsToFetch.add(uid));
+      if (upcomingMatch) {
+        const isPublished = upcomingMatch.status === 'published' || upcomingMatch.status === 'teams_generated';
+        const isRoster = userData?.uid ? upcomingMatch.roster.includes(userData.uid) : false;
+        const isWaitlist = userData?.uid ? upcomingMatch.waitlist.includes(userData.uid) : false;
+        
+        if (isRoster || isWaitlist) {
+          upcomingMatch.roster.forEach(uid => uidsToFetch.add(uid));
+        }
+
+        if (isPublished) {
+          (upcomingMatch.teamRed || []).forEach(uid => uidsToFetch.add(uid));
+          (upcomingMatch.teamWhite || []).forEach(uid => uidsToFetch.add(uid));
+        }
       }
 
-      if (isPublished) {
-        upcomingMatch.teamRed.forEach(uid => uidsToFetch.add(uid));
-        upcomingMatch.teamWhite.forEach(uid => uidsToFetch.add(uid));
-      }
+      // Also collect UIDs from historyMatches
+      historyMatches.forEach(m => {
+        (m.roster || []).forEach(uid => uidsToFetch.add(uid));
+        (m.teamRed || []).forEach(uid => uidsToFetch.add(uid));
+        (m.teamWhite || []).forEach(uid => uidsToFetch.add(uid));
+        if (m.playerStats) {
+          Object.keys(m.playerStats).forEach(uid => uidsToFetch.add(uid));
+        }
+      });
 
       const uids = Array.from(uidsToFetch);
 
@@ -81,10 +108,13 @@ export const PlayerDashboard: React.FC = () => {
           names[uid] = guestName + ' (Guest)';
         });
         
+        // Filter out UIDs already resolved
+        const missingRealUids = realUids.filter(uid => !teamNames[uid]);
+
         // Firestore 'in' queries support max 10 items.
         const chunkSize = 10;
-        for (let i = 0; i < realUids.length; i += chunkSize) {
-          const chunk = realUids.slice(i, i + chunkSize);
+        for (let i = 0; i < missingRealUids.length; i += chunkSize) {
+          const chunk = missingRealUids.slice(i, i + chunkSize);
           if (chunk.length > 0) {
             const uidsQuery = query(collection(db, 'users'), where('uid', 'in', chunk));
             const snap = await getDocs(uidsQuery);
@@ -93,11 +123,13 @@ export const PlayerDashboard: React.FC = () => {
             });
           }
         }
-        setTeamNames(names);
+        if (Object.keys(names).length > 0) {
+          setTeamNames(prev => ({ ...prev, ...names }));
+        }
       }
     };
     fetchNames();
-  }, [upcomingMatch, userData?.uid]);
+  }, [upcomingMatch, historyMatches, userData?.uid]);
 
   const handleRSVP = async (intent: 'in' | 'out', screenshotUrl?: string) => {
     if (!upcomingMatch || !userData) return;
@@ -535,50 +567,201 @@ export const PlayerDashboard: React.FC = () => {
           <div className="mt-12">
             <h2 className="text-2xl font-black text-gray-900 mb-6 tracking-tight">Your Match History</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {historyMatches.map(m => (
-                <div key={m.id} className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between">
-                  <div>
-                    <h3 className="font-bold text-gray-900 text-lg flex items-center gap-2">
-                      <Calendar className="w-5 h-5 text-gray-400" />
-                      {new Date(m.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                    </h3>
-                    <p className="text-gray-500 text-sm mt-1 flex items-center gap-1">
-                      <MapPin className="w-4 h-4" /> {m.venue}
-                    </p>
-                    {(m.scoreRed !== undefined && m.scoreWhite !== undefined) && (
-                      <div className="mt-3 p-2.5 bg-gray-50 rounded-lg border border-gray-200 flex items-center justify-between">
-                        <div className="font-bold text-xs text-gray-800 flex items-center gap-1.5">
-                          <Trophy className="w-3.5 h-3.5 text-amber-500" />
-                          <span>Red {m.scoreRed} - {m.scoreWhite} White</span>
+              {historyMatches.map(m => {
+                const hasScore = m.scoreRed !== undefined && m.scoreWhite !== undefined;
+                const isExpanded = !!expandedMatchIds[m.id];
+                const redPlayers = m.teamRed || [];
+                const whitePlayers = m.teamWhite || [];
+
+                return (
+                  <div key={m.id} className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between transition-all">
+                    <div>
+                      <h3 className="font-bold text-gray-900 text-lg flex items-center gap-2">
+                        <Calendar className="w-5 h-5 text-gray-400" />
+                        {new Date(m.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </h3>
+                      <p className="text-gray-500 text-sm mt-1 flex items-center gap-1">
+                        <MapPin className="w-4 h-4" /> {m.venue}
+                      </p>
+
+                      {hasScore && (
+                        <div className="mt-3">
+                          {/* Accordion Toggle Bar */}
+                          <button
+                            type="button"
+                            onClick={() => toggleMatchAccordion(m.id)}
+                            className="w-full p-2.5 bg-gray-50 hover:bg-gray-100/90 active:bg-gray-200/60 rounded-lg border border-gray-200 flex items-center justify-between transition cursor-pointer group text-left"
+                            title={isExpanded ? 'Collapse player stats' : 'Expand player stats table'}
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <div className="font-bold text-xs text-gray-800 flex items-center gap-1.5 shrink-0">
+                                <Trophy className="w-3.5 h-3.5 text-amber-500" />
+                                <span>Red {m.scoreRed} - {m.scoreWhite} White</span>
+                              </div>
+                              <span className="text-gray-400 group-hover:text-gray-600 transition shrink-0">
+                                {isExpanded ? (
+                                  <ChevronUp className="w-3.5 h-3.5 text-gray-500" />
+                                ) : (
+                                  <ChevronDown className="w-3.5 h-3.5 text-gray-500" />
+                                )}
+                              </span>
+                            </div>
+
+                            {userData && m.playerStats?.[userData.uid] && (
+                              <div className="text-[11px] font-bold text-emerald-700 flex items-center gap-1.5 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 shrink-0">
+                                {m.playerStats[userData.uid].goals > 0 && (
+                                  <span>⚽ {m.playerStats[userData.uid].goals}</span>
+                                )}
+                                {m.playerStats[userData.uid].assists > 0 && (
+                                  <span>👟 {m.playerStats[userData.uid].assists}</span>
+                                )}
+                                {m.playerStats[userData.uid].goals === 0 && m.playerStats[userData.uid].assists === 0 && (
+                                  <span className="text-gray-500 font-normal">Played</span>
+                                )}
+                              </div>
+                            )}
+                          </button>
+
+                          {/* Expanded Tabular Stats View */}
+                          {isExpanded && (
+                            <div className="mt-3 space-y-3 bg-gray-50/70 p-2.5 sm:p-3 rounded-xl border border-gray-200 text-xs animate-fade-in">
+                              {/* Team Red Table */}
+                              <div className="bg-white rounded-lg border border-red-100 overflow-hidden shadow-2xs">
+                                <div className="bg-red-50/90 px-2.5 py-1.5 border-b border-red-100 flex items-center justify-between text-xs font-bold text-red-800">
+                                  <span className="flex items-center gap-1">
+                                    <Shield className="w-3 h-3 text-red-600" /> Team Red
+                                  </span>
+                                  <span className="text-[10px] bg-red-100 text-red-700 font-bold px-1.5 py-0.5 rounded-full">
+                                    {m.scoreRed ?? 0} Goals
+                                  </span>
+                                </div>
+                                {redPlayers.length > 0 ? (
+                                  <table className="w-full text-left text-xs">
+                                    <thead>
+                                      <tr className="text-[10px] text-gray-400 uppercase border-b border-gray-100 bg-gray-50/50">
+                                        <th className="py-1 px-2.5 font-bold">Player</th>
+                                        <th className="py-1 px-1.5 text-center font-bold" title="Goals">⚽ G</th>
+                                        <th className="py-1 px-1.5 text-center font-bold" title="Assists">👟 A</th>
+                                        <th className="py-1 px-1.5 text-center font-bold" title="Own Goals">OG</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                      {redPlayers.map(uid => {
+                                        const name = teamNames[uid] || (uid.startsWith('guest:') ? `${uid.split(':')[1]} (Guest)` : uid);
+                                        const pos = m.teamRedPositions?.[uid];
+                                        const stats = m.playerStats?.[uid] || { goals: 0, assists: 0, ownGoals: 0 };
+                                        const isCurrentUser = uid === userData?.uid;
+
+                                        return (
+                                          <tr key={uid} className={isCurrentUser ? 'bg-emerald-50/60 font-medium' : 'hover:bg-gray-50/40'}>
+                                            <td className="py-1.5 px-2.5">
+                                              <div className="flex items-center gap-1.5 min-w-0">
+                                                {pos && (
+                                                  <span className={`px-1 py-0.2 rounded text-[8px] font-black uppercase border shrink-0 ${getPosBadgeColor(pos)}`}>
+                                                    {pos}
+                                                  </span>
+                                                )}
+                                                <span className={`truncate text-xs ${isCurrentUser ? 'font-bold text-emerald-950' : 'text-gray-800'}`} title={name}>
+                                                  {name} {isCurrentUser && <span className="text-[9px] text-emerald-600 font-bold">(You)</span>}
+                                                </span>
+                                              </div>
+                                            </td>
+                                            <td className={`py-1.5 px-1.5 text-center font-mono ${stats.goals > 0 ? 'font-bold text-gray-900 bg-emerald-50/40' : 'text-gray-400'}`}>
+                                              {stats.goals || 0}
+                                            </td>
+                                            <td className={`py-1.5 px-1.5 text-center font-mono ${stats.assists > 0 ? 'font-bold text-indigo-700 bg-indigo-50/40' : 'text-gray-400'}`}>
+                                              {stats.assists || 0}
+                                            </td>
+                                            <td className={`py-1.5 px-1.5 text-center font-mono ${stats.ownGoals && stats.ownGoals > 0 ? 'font-bold text-red-600 bg-red-50/40' : 'text-gray-400'}`}>
+                                              {stats.ownGoals || 0}
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                ) : (
+                                  <p className="text-gray-400 italic text-[11px] text-center py-2">No players listed</p>
+                                )}
+                              </div>
+
+                              {/* Team White Table */}
+                              <div className="bg-white rounded-lg border border-slate-200 overflow-hidden shadow-2xs">
+                                <div className="bg-slate-100/90 px-2.5 py-1.5 border-b border-slate-200 flex items-center justify-between text-xs font-bold text-slate-800">
+                                  <span className="flex items-center gap-1">
+                                    <Shield className="w-3 h-3 text-slate-500" /> Team White
+                                  </span>
+                                  <span className="text-[10px] bg-slate-200 text-slate-700 font-bold px-1.5 py-0.5 rounded-full">
+                                    {m.scoreWhite ?? 0} Goals
+                                  </span>
+                                </div>
+                                {whitePlayers.length > 0 ? (
+                                  <table className="w-full text-left text-xs">
+                                    <thead>
+                                      <tr className="text-[10px] text-gray-400 uppercase border-b border-gray-100 bg-gray-50/50">
+                                        <th className="py-1 px-2.5 font-bold">Player</th>
+                                        <th className="py-1 px-1.5 text-center font-bold" title="Goals">⚽ G</th>
+                                        <th className="py-1 px-1.5 text-center font-bold" title="Assists">👟 A</th>
+                                        <th className="py-1 px-1.5 text-center font-bold" title="Own Goals">OG</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                      {whitePlayers.map(uid => {
+                                        const name = teamNames[uid] || (uid.startsWith('guest:') ? `${uid.split(':')[1]} (Guest)` : uid);
+                                        const pos = m.teamWhitePositions?.[uid];
+                                        const stats = m.playerStats?.[uid] || { goals: 0, assists: 0, ownGoals: 0 };
+                                        const isCurrentUser = uid === userData?.uid;
+
+                                        return (
+                                          <tr key={uid} className={isCurrentUser ? 'bg-emerald-50/60 font-medium' : 'hover:bg-gray-50/40'}>
+                                            <td className="py-1.5 px-2.5">
+                                              <div className="flex items-center gap-1.5 min-w-0">
+                                                {pos && (
+                                                  <span className={`px-1 py-0.2 rounded text-[8px] font-black uppercase border shrink-0 ${getPosBadgeColor(pos)}`}>
+                                                    {pos}
+                                                  </span>
+                                                )}
+                                                <span className={`truncate text-xs ${isCurrentUser ? 'font-bold text-emerald-950' : 'text-gray-800'}`} title={name}>
+                                                  {name} {isCurrentUser && <span className="text-[9px] text-emerald-600 font-bold">(You)</span>}
+                                                </span>
+                                              </div>
+                                            </td>
+                                            <td className={`py-1.5 px-1.5 text-center font-mono ${stats.goals > 0 ? 'font-bold text-gray-900 bg-emerald-50/40' : 'text-gray-400'}`}>
+                                              {stats.goals || 0}
+                                            </td>
+                                            <td className={`py-1.5 px-1.5 text-center font-mono ${stats.assists > 0 ? 'font-bold text-indigo-700 bg-indigo-50/40' : 'text-gray-400'}`}>
+                                              {stats.assists || 0}
+                                            </td>
+                                            <td className={`py-1.5 px-1.5 text-center font-mono ${stats.ownGoals && stats.ownGoals > 0 ? 'font-bold text-red-600 bg-red-50/40' : 'text-gray-400'}`}>
+                                              {stats.ownGoals || 0}
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                ) : (
+                                  <p className="text-gray-400 italic text-[11px] text-center py-2">No players listed</p>
+                                )}
+                              </div>
+                            </div>
+                          )}
                         </div>
-                        {userData && m.playerStats?.[userData.uid] && (
-                          <div className="text-[11px] font-bold text-emerald-700 flex items-center gap-1.5 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                            {m.playerStats[userData.uid].goals > 0 && (
-                              <span>⚽ {m.playerStats[userData.uid].goals}</span>
-                            )}
-                            {m.playerStats[userData.uid].assists > 0 && (
-                              <span>👟 {m.playerStats[userData.uid].assists}</span>
-                            )}
-                            {m.playerStats[userData.uid].goals === 0 && m.playerStats[userData.uid].assists === 0 && (
-                              <span className="text-gray-500 font-normal">Played</span>
-                            )}
-                          </div>
-                        )}
-                      </div>
+                      )}
+                    </div>
+                    {m.youtubeLink && (
+                      <a 
+                        href={m.youtubeLink} 
+                        target="_blank" 
+                        rel="noreferrer"
+                        className="mt-4 bg-red-50 hover:bg-red-100 text-red-600 font-bold py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition"
+                      >
+                        ▶ Watch Highlights
+                      </a>
                     )}
                   </div>
-                  {m.youtubeLink && (
-                    <a 
-                      href={m.youtubeLink} 
-                      target="_blank" 
-                      rel="noreferrer"
-                      className="mt-4 bg-red-50 hover:bg-red-100 text-red-600 font-bold py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition"
-                    >
-                      ▶ Watch Highlights
-                    </a>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
