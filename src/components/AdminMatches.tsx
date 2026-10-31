@@ -803,7 +803,19 @@ export const AdminMatches: React.FC = () => {
                   </span>
                   
                   <div className="flex gap-2">
-                    {!isCompleted && (
+                    {isCompleted ? (
+                      <button 
+                        onClick={async () => {
+                          if (window.confirm("Re-open this match? It will move back to Published and appear in upcoming matches.")) {
+                            await updateDoc(doc(db, 'matches', match.id), { status: 'published' });
+                          }
+                        }} 
+                        className="p-2 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1" 
+                        title="Re-open Match (returns to Published)"
+                      >
+                        Re-open
+                      </button>
+                    ) : (
                       <button 
                         onClick={async () => {
                           if (window.confirm("Archive this match as Completed? Players will only see it in their History.")) {

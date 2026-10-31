@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
-import { X, Trophy, Sparkles, Check, AlertTriangle, Shield, CheckCircle } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { X, Trophy, Sparkles, Check, AlertTriangle, Shield, CheckCircle, Trash2, RefreshCw } from 'lucide-react';
 import type { Match, AppUser, PlayerMatchStats, Position } from '../types';
-import { parseMatchSummary } from '../utils/scoreParser';
+import { parseMatchSummary, calculateScoresFromStats, type PlayerWithTeam } from '../utils/scoreParser';
 
 interface MatchScoreModalProps {
   match: Match;
@@ -13,6 +13,7 @@ interface MatchScoreModalProps {
     playerStats: Record<string, PlayerMatchStats>;
     markCompleted?: boolean;
   }) => Promise<void>;
+  onClearScore?: () => Promise<void>;
 }
 
 export const MatchScoreModal: React.FC<MatchScoreModalProps> = ({
@@ -20,11 +21,22 @@ export const MatchScoreModal: React.FC<MatchScoreModalProps> = ({
   players,
   onClose,
   onSave,
+  onClearScore,
 }) => {
-  const [scoreRed, setScoreRed] = useState<number>(match.scoreRed ?? 0);
-  const [scoreWhite, setScoreWhite] = useState<number>(match.scoreWhite ?? 0);
   const [playerStats, setPlayerStats] = useState<Record<string, PlayerMatchStats>>(
     match.playerStats ?? {}
+  );
+
+  // Dynamic calculated totals from current player stats
+  const calculatedTotals = useMemo(() => {
+    return calculateScoresFromStats(playerStats, match.teamRed || [], match.teamWhite || []);
+  }, [playerStats, match.teamRed, match.teamWhite]);
+
+  const [scoreRed, setScoreRed] = useState<number>(
+    match.scoreRed ?? calculatedTotals.scoreRed
+  );
+  const [scoreWhite, setScoreWhite] = useState<number>(
+    match.scoreWhite ?? calculatedTotals.scoreWhite
   );
   const [markCompleted, setMarkCompleted] = useState<boolean>(match.status === 'completed');
   const [rawText, setRawText] = useState<string>('');
@@ -36,21 +48,24 @@ export const MatchScoreModal: React.FC<MatchScoreModalProps> = ({
   } | null>(null);
   const [saving, setSaving] = useState<boolean>(false);
 
-  // Available players list for parser
-  const allMatchPlayers = React.useMemo(() => {
+  // Available players list for parser with team assignments
+  const allMatchPlayers: PlayerWithTeam[] = useMemo(() => {
     const uids = Array.from(new Set([...(match.teamRed || []), ...(match.teamWhite || []), ...(match.roster || [])]));
     return uids.map(uid => {
       const u = players[uid];
+      const isRed = (match.teamRed || []).includes(uid);
+      const isWhite = (match.teamWhite || []).includes(uid);
       return {
         uid,
         name: u?.name || (uid.startsWith('guest:') ? `${uid.split(':')[1]} (Guest)` : uid),
+        team: isRed ? 'red' : isWhite ? 'white' : undefined,
       };
     });
   }, [match, players]);
 
-  const handleStatChange = (uid: string, field: 'goals' | 'assists', delta: number) => {
+  const handleStatChange = (uid: string, field: 'goals' | 'assists' | 'ownGoals', delta: number) => {
     setPlayerStats(prev => {
-      const current = prev[uid] || { goals: 0, assists: 0 };
+      const current = prev[uid] || { goals: 0, assists: 0, ownGoals: 0 };
       const nextVal = Math.max(0, (current[field] || 0) + delta);
       return {
         ...prev,
@@ -62,10 +77,10 @@ export const MatchScoreModal: React.FC<MatchScoreModalProps> = ({
     });
   };
 
-  const handleStatInput = (uid: string, field: 'goals' | 'assists', value: string) => {
+  const handleStatInput = (uid: string, field: 'goals' | 'assists' | 'ownGoals', value: string) => {
     const num = Math.max(0, parseInt(value, 10) || 0);
     setPlayerStats(prev => {
-      const current = prev[uid] || { goals: 0, assists: 0 };
+      const current = prev[uid] || { goals: 0, assists: 0, ownGoals: 0 };
       return {
         ...prev,
         [uid]: {
@@ -85,14 +100,11 @@ export const MatchScoreModal: React.FC<MatchScoreModalProps> = ({
       return;
     }
 
-    const result = parseMatchSummary(rawText, allMatchPlayers);
+    const result = parseMatchSummary(rawText, allMatchPlayers, match.teamRed || [], match.teamWhite || []);
 
-    if (result.scoreRed !== undefined) {
-      setScoreRed(result.scoreRed);
-    }
-    if (result.scoreWhite !== undefined) {
-      setScoreWhite(result.scoreWhite);
-    }
+    // Set score strictly derived from parsed player stats and opponent own goals
+    setScoreRed(result.scoreRed);
+    setScoreWhite(result.scoreWhite);
 
     // Merge parsed player stats into existing
     setPlayerStats(prev => {
@@ -110,18 +122,18 @@ export const MatchScoreModal: React.FC<MatchScoreModalProps> = ({
     if (result.unmatched.length > 0) {
       setParseFeedback({
         type: 'warning',
-        message: `Allocated stats for ${result.matched.length} players. Could not match ${result.unmatched.length} name(s):`,
-        unmatchedNames: result.unmatched.map(u => `${u.parsedName} (${u.stats.goals}g ${u.stats.assists}a)`),
+        message: `Allocated stats for ${result.matched.length} player(s). Computed Score: Red ${result.scoreRed} - ${result.scoreWhite} White. Could not match ${result.unmatched.length} name(s):`,
+        unmatchedNames: result.unmatched.map(u => `${u.parsedName} (${u.stats.goals}g ${u.stats.assists}a${u.stats.ownGoals ? ` ${u.stats.ownGoals}og` : ''})`),
       });
-    } else if (result.matched.length > 0 || result.scoreRed !== undefined) {
+    } else if (result.matched.length > 0) {
       setParseFeedback({
         type: 'success',
-        message: `Successfully allocated stats for ${result.matched.length} player(s)${result.scoreRed !== undefined ? ` and set match score (${result.scoreRed}-${result.scoreWhite})` : ''}!`,
+        message: `Allocated stats for ${result.matched.length} player(s) and set score: Red ${result.scoreRed} - ${result.scoreWhite} White!`,
       });
     } else {
       setParseFeedback({
         type: 'warning',
-        message: 'No player stats or scores detected in the pasted text. Please verify the format.',
+        message: 'No player stats detected in the pasted text. Please verify the format.',
       });
     }
   };
@@ -144,15 +156,10 @@ export const MatchScoreModal: React.FC<MatchScoreModalProps> = ({
     }
   };
 
-  // Tally totals for UI feedback
-  const totalRedGoals = (match.teamRed || []).reduce(
-    (sum, uid) => sum + (playerStats[uid]?.goals || 0),
-    0
-  );
-  const totalWhiteGoals = (match.teamWhite || []).reduce(
-    (sum, uid) => sum + (playerStats[uid]?.goals || 0),
-    0
-  );
+  const totalRedGoals = calculatedTotals.redGoals;
+  const totalWhiteGoals = calculatedTotals.whiteGoals;
+  const totalRedOwnGoals = calculatedTotals.redOwnGoals;
+  const totalWhiteOwnGoals = calculatedTotals.whiteOwnGoals;
 
   const getPosBadgeColor = (pos?: Position) => {
     switch (pos) {
@@ -299,9 +306,12 @@ export const MatchScoreModal: React.FC<MatchScoreModalProps> = ({
                     +
                   </button>
                 </div>
-                <span className="text-[11px] text-gray-500 mt-2 font-medium">
-                  Player Goals: <b className="text-gray-900">{totalRedGoals}</b>
-                </span>
+                <div className="flex flex-col items-center mt-2 text-[11px] text-gray-500 font-medium">
+                  <span>Player Goals: <b className="text-gray-900">{totalRedGoals}</b></span>
+                  {totalWhiteOwnGoals > 0 && (
+                    <span className="text-red-600 font-bold text-[10px]">+ {totalWhiteOwnGoals} White OG</span>
+                  )}
+                </div>
               </div>
 
               <div className="text-center font-black text-gray-300 text-xl sm:text-2xl">
@@ -336,11 +346,31 @@ export const MatchScoreModal: React.FC<MatchScoreModalProps> = ({
                     +
                   </button>
                 </div>
-                <span className="text-[11px] text-gray-500 mt-2 font-medium">
-                  Player Goals: <b className="text-gray-900">{totalWhiteGoals}</b>
-                </span>
+                <div className="flex flex-col items-center mt-2 text-[11px] text-gray-500 font-medium">
+                  <span>Player Goals: <b className="text-gray-900">{totalWhiteGoals}</b></span>
+                  {totalRedOwnGoals > 0 && (
+                    <span className="text-slate-700 font-bold text-[10px]">+ {totalRedOwnGoals} Red OG</span>
+                  )}
+                </div>
               </div>
             </div>
+
+            {/* Sync with Player Stats Button if manually edited or mismatched */}
+            {(scoreRed !== calculatedTotals.scoreRed || scoreWhite !== calculatedTotals.scoreWhite) && (
+              <div className="flex justify-center mt-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setScoreRed(calculatedTotals.scoreRed);
+                    setScoreWhite(calculatedTotals.scoreWhite);
+                  }}
+                  className="text-xs font-bold text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-3.5 py-1.5 rounded-lg flex items-center gap-1.5 transition shadow-2xs"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  Sync with Player Stats (Red {calculatedTotals.scoreRed} - {calculatedTotals.scoreWhite} White)
+                </button>
+              </div>
+            )}
 
             {/* Outcome Badge */}
             <div className="text-center mt-3">
@@ -402,21 +432,16 @@ export const MatchScoreModal: React.FC<MatchScoreModalProps> = ({
                           <span className="text-xs font-bold text-gray-900 truncate" title={name}>
                             {name}
                           </span>
-                          {stats.ownGoals && stats.ownGoals > 0 ? (
-                            <span className="text-[10px] bg-red-100 text-red-700 px-1 rounded font-bold">
-                              {stats.ownGoals} OG
-                            </span>
-                          ) : null}
                         </div>
 
-                        <div className="flex items-center gap-3 shrink-0 self-end sm:self-auto">
+                        <div className="flex flex-wrap items-center gap-2.5 shrink-0 self-end sm:self-auto">
                           {/* Goals Stepper */}
-                          <div className="flex items-center gap-1">
-                            <span className="text-[11px] font-bold text-gray-500" title="Goals">⚽</span>
+                          <div className="flex items-center gap-1" title="Goals scored">
+                            <span className="text-[11px] font-bold text-gray-500">⚽</span>
                             <button
                               type="button"
                               onClick={() => handleStatChange(uid, 'goals', -1)}
-                              className="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center transition"
+                              className="w-5 h-5 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center transition"
                             >
                               -
                             </button>
@@ -425,24 +450,24 @@ export const MatchScoreModal: React.FC<MatchScoreModalProps> = ({
                               min="0"
                               value={stats.goals || 0}
                               onChange={e => handleStatInput(uid, 'goals', e.target.value)}
-                              className="w-8 h-6 text-center text-xs font-bold bg-white border border-gray-200 rounded font-mono"
+                              className="w-7 h-5 text-center text-xs font-bold bg-white border border-gray-200 rounded font-mono"
                             />
                             <button
                               type="button"
                               onClick={() => handleStatChange(uid, 'goals', 1)}
-                              className="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center transition"
+                              className="w-5 h-5 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center transition"
                             >
                               +
                             </button>
                           </div>
 
                           {/* Assists Stepper */}
-                          <div className="flex items-center gap-1">
-                            <span className="text-[11px] font-bold text-gray-500" title="Assists">👟</span>
+                          <div className="flex items-center gap-1" title="Assists">
+                            <span className="text-[11px] font-bold text-gray-500">👟</span>
                             <button
                               type="button"
                               onClick={() => handleStatChange(uid, 'assists', -1)}
-                              className="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center transition"
+                              className="w-5 h-5 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center transition"
                             >
                               -
                             </button>
@@ -451,12 +476,38 @@ export const MatchScoreModal: React.FC<MatchScoreModalProps> = ({
                               min="0"
                               value={stats.assists || 0}
                               onChange={e => handleStatInput(uid, 'assists', e.target.value)}
-                              className="w-8 h-6 text-center text-xs font-bold bg-white border border-gray-200 rounded font-mono"
+                              className="w-7 h-5 text-center text-xs font-bold bg-white border border-gray-200 rounded font-mono"
                             />
                             <button
                               type="button"
                               onClick={() => handleStatChange(uid, 'assists', 1)}
-                              className="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center transition"
+                              className="w-5 h-5 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center transition"
+                            >
+                              +
+                            </button>
+                          </div>
+
+                          {/* Own Goals Stepper */}
+                          <div className="flex items-center gap-1" title="Own Goals (Counts for Team White)">
+                            <span className="text-[10px] font-bold text-red-500">OG:</span>
+                            <button
+                              type="button"
+                              onClick={() => handleStatChange(uid, 'ownGoals', -1)}
+                              className="w-5 h-5 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center transition"
+                            >
+                              -
+                            </button>
+                            <input
+                              type="number"
+                              min="0"
+                              value={stats.ownGoals || 0}
+                              onChange={e => handleStatInput(uid, 'ownGoals', e.target.value)}
+                              className="w-7 h-5 text-center text-xs font-bold bg-white border border-gray-200 rounded font-mono"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleStatChange(uid, 'ownGoals', 1)}
+                              className="w-5 h-5 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center transition"
                             >
                               +
                             </button>
@@ -507,21 +558,16 @@ export const MatchScoreModal: React.FC<MatchScoreModalProps> = ({
                           <span className="text-xs font-bold text-gray-900 truncate" title={name}>
                             {name}
                           </span>
-                          {stats.ownGoals && stats.ownGoals > 0 ? (
-                            <span className="text-[10px] bg-red-100 text-red-700 px-1 rounded font-bold">
-                              {stats.ownGoals} OG
-                            </span>
-                          ) : null}
                         </div>
 
-                        <div className="flex items-center gap-3 shrink-0 self-end sm:self-auto">
+                        <div className="flex flex-wrap items-center gap-2.5 shrink-0 self-end sm:self-auto">
                           {/* Goals Stepper */}
-                          <div className="flex items-center gap-1">
-                            <span className="text-[11px] font-bold text-gray-500" title="Goals">⚽</span>
+                          <div className="flex items-center gap-1" title="Goals scored">
+                            <span className="text-[11px] font-bold text-gray-500">⚽</span>
                             <button
                               type="button"
                               onClick={() => handleStatChange(uid, 'goals', -1)}
-                              className="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center transition"
+                              className="w-5 h-5 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center transition"
                             >
                               -
                             </button>
@@ -530,24 +576,24 @@ export const MatchScoreModal: React.FC<MatchScoreModalProps> = ({
                               min="0"
                               value={stats.goals || 0}
                               onChange={e => handleStatInput(uid, 'goals', e.target.value)}
-                              className="w-8 h-6 text-center text-xs font-bold bg-white border border-gray-200 rounded font-mono"
+                              className="w-7 h-5 text-center text-xs font-bold bg-white border border-gray-200 rounded font-mono"
                             />
                             <button
                               type="button"
                               onClick={() => handleStatChange(uid, 'goals', 1)}
-                              className="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center transition"
+                              className="w-5 h-5 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center transition"
                             >
                               +
                             </button>
                           </div>
 
                           {/* Assists Stepper */}
-                          <div className="flex items-center gap-1">
-                            <span className="text-[11px] font-bold text-gray-500" title="Assists">👟</span>
+                          <div className="flex items-center gap-1" title="Assists">
+                            <span className="text-[11px] font-bold text-gray-500">👟</span>
                             <button
                               type="button"
                               onClick={() => handleStatChange(uid, 'assists', -1)}
-                              className="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center transition"
+                              className="w-5 h-5 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center transition"
                             >
                               -
                             </button>
@@ -556,12 +602,38 @@ export const MatchScoreModal: React.FC<MatchScoreModalProps> = ({
                               min="0"
                               value={stats.assists || 0}
                               onChange={e => handleStatInput(uid, 'assists', e.target.value)}
-                              className="w-8 h-6 text-center text-xs font-bold bg-white border border-gray-200 rounded font-mono"
+                              className="w-7 h-5 text-center text-xs font-bold bg-white border border-gray-200 rounded font-mono"
                             />
                             <button
                               type="button"
                               onClick={() => handleStatChange(uid, 'assists', 1)}
-                              className="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center transition"
+                              className="w-5 h-5 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center transition"
+                            >
+                              +
+                            </button>
+                          </div>
+
+                          {/* Own Goals Stepper */}
+                          <div className="flex items-center gap-1" title="Own Goals (Counts for Team Red)">
+                            <span className="text-[10px] font-bold text-red-500">OG:</span>
+                            <button
+                              type="button"
+                              onClick={() => handleStatChange(uid, 'ownGoals', -1)}
+                              className="w-5 h-5 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center transition"
+                            >
+                              -
+                            </button>
+                            <input
+                              type="number"
+                              min="0"
+                              value={stats.ownGoals || 0}
+                              onChange={e => handleStatInput(uid, 'ownGoals', e.target.value)}
+                              className="w-7 h-5 text-center text-xs font-bold bg-white border border-gray-200 rounded font-mono"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleStatChange(uid, 'ownGoals', 1)}
+                              className="w-5 h-5 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center transition"
                             >
                               +
                             </button>
@@ -598,29 +670,48 @@ export const MatchScoreModal: React.FC<MatchScoreModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="bg-gray-50 p-4 border-t border-gray-200 flex justify-end items-center gap-3 shrink-0">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={saving}
-            className="px-4 py-2 border border-gray-300 hover:bg-gray-100 text-gray-700 font-bold rounded-lg text-sm transition"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving}
-            className="bg-gray-900 hover:bg-black text-white font-bold px-6 py-2 rounded-lg text-sm transition flex items-center gap-2 shadow-sm disabled:opacity-50"
-          >
-            {saving ? (
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <>
-                <Check className="w-4 h-4" /> Save Match Result
-              </>
+        <div className="bg-gray-50 p-4 border-t border-gray-200 flex flex-col sm:flex-row justify-between items-center gap-3 shrink-0">
+          <div>
+            {(onClearScore && (match.scoreRed !== undefined || match.scoreWhite !== undefined)) && (
+              <button
+                type="button"
+                onClick={async () => {
+                  if (window.confirm("Are you sure you want to clear/unpublish the recorded score and player stats?")) {
+                    await onClearScore();
+                    onClose();
+                  }
+                }}
+                disabled={saving}
+                className="px-3.5 py-2 border border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400 font-bold rounded-lg text-xs transition flex items-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> Clear / Unpublish Score
+              </button>
             )}
-          </button>
+          </div>
+          <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={saving}
+              className="px-4 py-2 border border-gray-300 hover:bg-gray-100 text-gray-700 font-bold rounded-lg text-sm transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving}
+              className="bg-gray-900 hover:bg-black text-white font-bold px-6 py-2 rounded-lg text-sm transition flex items-center gap-2 shadow-sm disabled:opacity-50"
+            >
+              {saving ? (
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <>
+                  <Check className="w-4 h-4" /> Save Match Result
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </div>
     </div>

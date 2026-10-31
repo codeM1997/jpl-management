@@ -1,16 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { doc, getDocs, updateDoc, collection, query, where, onSnapshot, deleteDoc } from 'firebase/firestore';
+import { doc, getDocs, updateDoc, collection, query, where, onSnapshot, deleteDoc, deleteField } from 'firebase/firestore';
 import { db } from '../firebase';
 import type { Match, AppUser, Position, PlayerMatchStats } from '../types';
 import { Navbar } from '../components/Navbar';
 import { DndContext, pointerWithin, KeyboardSensor, PointerSensor, useSensor, useSensors, DragOverlay, type DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ArrowLeft, Users, Shield, Save, X, PlusCircle, Share2, Sparkles, Trophy } from 'lucide-react';
+import { ArrowLeft, Users, Shield, Save, X, PlusCircle, Share2, Sparkles, Trophy, Lock, Unlock, Trash2 } from 'lucide-react';
 import { PaymentProofImage } from '../components/PaymentProofImage';
 import { MatchScoreModal } from '../components/MatchScoreModal';
 import { generateBalancedTeams, normalizePlayer, getPlayerEffectiveRating } from '../utils/ratingEngine';
+import { calculateScoresFromStats } from '../utils/scoreParser';
 
 // --- Sortable Player Item Component ---
 interface SortablePlayerProps {
@@ -230,6 +231,7 @@ export const ManageMatch: React.FC = () => {
   };
   
   const [showScoreModal, setShowScoreModal] = useState(false);
+  const [isManualUnlocked, setIsManualUnlocked] = useState(false);
   const [saving, setSaving] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [guestName, setGuestName] = useState('');
@@ -250,6 +252,31 @@ export const ManageMatch: React.FC = () => {
       updatePayload.status = 'completed';
     }
     await updateDoc(doc(db, 'matches', matchId), updatePayload);
+  };
+
+  const handleClearScore = async () => {
+    if (!matchId) return;
+    if (!window.confirm("Are you sure you want to clear/unpublish the recorded score and player stats?")) {
+      return;
+    }
+    setSaving(true);
+    try {
+      const updatePayload: any = {
+        scoreRed: deleteField(),
+        scoreWhite: deleteField(),
+        playerStats: deleteField(),
+      };
+      if (match?.status === 'completed') {
+        updatePayload.status = 'published';
+      }
+      await updateDoc(doc(db, 'matches', matchId), updatePayload);
+      alert("Match score and player stats cleared successfully.");
+    } catch (err) {
+      console.error('Failed to clear score:', err);
+      alert("Failed to clear score.");
+    } finally {
+      setSaving(false);
+    }
   };
   
   const [allApprovedUsers, setAllApprovedUsers] = useState<AppUser[]>([]);
@@ -531,10 +558,10 @@ export const ManageMatch: React.FC = () => {
   };
 
   const handleSave = async () => {
-    if (!matchId) return;
+    if (!matchId || !match) return;
     setSaving(true);
     try {
-      await updateDoc(doc(db, 'matches', matchId), {
+      const updateData: any = {
         teamRed,
         teamWhite,
         teamRedPositions,
@@ -542,9 +569,22 @@ export const ManageMatch: React.FC = () => {
         teamRedStrength,
         teamWhiteStrength,
         splitScore,
-        status: teamRed.length > 0 || teamWhite.length > 0 ? 'teams_generated' : 'active'
-      });
-      alert('Teams saved successfully!');
+      };
+
+      // Only alter status if not already published or completed
+      if (match.status !== 'published' && match.status !== 'completed') {
+        updateData.status = teamRed.length > 0 || teamWhite.length > 0 ? 'teams_generated' : 'active';
+      }
+
+      // If scores were already recorded, automatically recalculate scores for the newly saved teams!
+      if (match.playerStats && match.scoreRed !== undefined) {
+        const recalculated = calculateScoresFromStats(match.playerStats, teamRed, teamWhite);
+        updateData.scoreRed = recalculated.scoreRed;
+        updateData.scoreWhite = recalculated.scoreWhite;
+      }
+
+      await updateDoc(doc(db, 'matches', matchId), updateData);
+      alert('Teams saved successfully!' + (match.scoreRed !== undefined ? ' Scores auto-recalculated for updated team assignments.' : ''));
     } catch (err) {
       console.error(err);
       alert('Failed to save teams.');
@@ -555,13 +595,29 @@ export const ManageMatch: React.FC = () => {
 
   const handlePublish = async () => {
     if (!matchId || !match) return;
-    
-    if (match.status !== 'published') {
-      const maxPlayers = match.maxPlayers || 12;
-      if (match.roster.length < maxPlayers) {
-        alert(`You cannot publish the match until the roster is full (${match.roster.length}/${maxPlayers} players).`);
-        return;
+
+    // Handle unpublishing or reopening if already completed or published
+    if (match.status === 'completed' || match.status === 'published') {
+      setSaving(true);
+      try {
+        const nextStatus = match.status === 'completed' ? 'published' : 'teams_generated';
+        await updateDoc(doc(db, 'matches', matchId), {
+          status: nextStatus
+        });
+        alert(match.status === 'completed' ? 'Match re-opened as Published. Roster is now unlocked!' : 'Match unpublished (returned to draft).');
+      } catch (err) {
+        console.error(err);
+        alert('Failed to update match status.');
+      } finally {
+        setSaving(false);
       }
+      return;
+    }
+
+    const maxPlayers = match.maxPlayers || 12;
+    if (match.roster.length < maxPlayers) {
+      alert(`You cannot publish the match until the roster is full (${match.roster.length}/${maxPlayers} players).`);
+      return;
     }
 
     if (unassigned.length > 0) {
@@ -574,9 +630,9 @@ export const ManageMatch: React.FC = () => {
       await updateDoc(doc(db, 'matches', matchId), {
         teamRed,
         teamWhite,
-        status: match.status === 'published' ? 'teams_generated' : 'published'
+        status: 'published'
       });
-      alert(match.status === 'published' ? 'Match unpublished (returned to draft).' : 'Match Published! Players can now see the teams.');
+      alert('Match Published! Players can now see the teams.');
     } catch (err) {
       console.error(err);
       alert('Failed to publish match.');
@@ -733,8 +789,9 @@ export const ManageMatch: React.FC = () => {
 
   const activeUser = activeId ? players[activeId] : null;
   const activeNorm = activeUser ? normalizePlayer(activeUser) : null;
-  const isLocked = match.status === 'published' || match.status === 'completed';
+  const isLocked = !isManualUnlocked && (match.status === 'published' || match.status === 'completed');
   const isPublished = match.status === 'published';
+  const isCompleted = match.status === 'completed';
   const maxPlayers = match.maxPlayers || 12;
   const getPaymentStatus = (uid: string) => {
     if (match.paidPlayers?.includes(uid)) return 'paid';
@@ -761,6 +818,20 @@ export const ManageMatch: React.FC = () => {
           </button>
           
           <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+            {(isPublished || isCompleted) && (
+              <button
+                onClick={() => setIsManualUnlocked(prev => !prev)}
+                className={`flex-1 sm:flex-none px-3.5 py-2 rounded-lg font-bold flex items-center justify-center gap-1.5 shadow-sm transition ${
+                  isManualUnlocked
+                    ? 'bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300'
+                    : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                }`}
+                title={isManualUnlocked ? "Lock roster edits" : "Unlock roster to adjust teams on ground"}
+              >
+                {isManualUnlocked ? <Unlock className="w-4 h-4 text-amber-600" /> : <Lock className="w-4 h-4" />}
+                {isManualUnlocked ? 'Roster Unlocked' : 'Unlock Teams'}
+              </button>
+            )}
             <button 
               onClick={handleReset} 
               disabled={isLocked}
@@ -799,11 +870,17 @@ export const ManageMatch: React.FC = () => {
             </button>
             <button 
               onClick={handlePublish} 
-              disabled={saving || match.status === 'completed' || (!isPublished && !canPublish)}
-              className={`flex-1 sm:flex-none px-4 py-2 rounded-lg font-bold flex items-center justify-center gap-2 shadow-sm transition disabled:opacity-50 ${isPublished ? 'bg-amber-500 hover:bg-amber-600 text-white' : 'bg-indigo-600 hover:bg-indigo-700 text-white'}`}
-              title={!isPublished && !canPublish ? 'Roster must be full to publish' : ''}
+              disabled={saving || (!isPublished && !isCompleted && !canPublish)}
+              className={`flex-1 sm:flex-none px-4 py-2 rounded-lg font-bold flex items-center justify-center gap-2 shadow-sm transition disabled:opacity-50 ${
+                isCompleted
+                  ? 'bg-purple-600 hover:bg-purple-700 text-white'
+                  : isPublished
+                  ? 'bg-amber-500 hover:bg-amber-600 text-white'
+                  : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+              }`}
+              title={!isPublished && !isCompleted && !canPublish ? 'Roster must be full to publish' : ''}
             >
-              {isPublished ? 'Unpublish' : 'Publish Match'}
+              {isCompleted ? 'Re-open Match' : isPublished ? 'Unpublish Match' : 'Publish Match'}
             </button>
           </div>
         </div>
@@ -824,12 +901,22 @@ export const ManageMatch: React.FC = () => {
                 </div>
               </div>
             </div>
-            <button
-              onClick={() => setShowScoreModal(true)}
-              className="bg-white/15 hover:bg-white/25 text-white px-4 py-2 rounded-lg text-xs font-bold transition border border-white/20 shrink-0 flex items-center gap-1.5"
-            >
-              <Trophy className="w-3.5 h-3.5" /> Edit Score & Stats
-            </button>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => setShowScoreModal(true)}
+                className="bg-white/15 hover:bg-white/25 text-white px-4 py-2 rounded-lg text-xs font-bold transition border border-white/20 flex items-center gap-1.5"
+              >
+                <Trophy className="w-3.5 h-3.5" /> Edit Score & Stats
+              </button>
+              <button
+                onClick={handleClearScore}
+                disabled={saving}
+                className="bg-red-500/20 hover:bg-red-500/35 text-red-200 hover:text-white px-3 py-2 rounded-lg text-xs font-bold transition border border-red-400/30 flex items-center gap-1.5"
+                title="Clear / Unpublish match score and player stats"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> Clear Score
+              </button>
+            </div>
           </div>
         )}
 
@@ -1189,6 +1276,7 @@ export const ManageMatch: React.FC = () => {
             players={players}
             onClose={() => setShowScoreModal(false)}
             onSave={handleSaveScoreAndStats}
+            onClearScore={handleClearScore}
           />
         )}
       </main>

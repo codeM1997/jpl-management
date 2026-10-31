@@ -1,15 +1,25 @@
 import type { PlayerMatchStats } from '../types';
 
+export interface PlayerWithTeam {
+  uid: string;
+  name: string;
+  team?: 'red' | 'white';
+}
+
 export interface ParsedPlayerStat {
   line: string;
   parsedName: string;
   stats: PlayerMatchStats;
-  matchedPlayer?: { uid: string; name: string };
+  matchedPlayer?: PlayerWithTeam;
 }
 
 export interface ParseSummaryResult {
-  scoreRed?: number;
-  scoreWhite?: number;
+  scoreRed: number;
+  scoreWhite: number;
+  redGoals: number;
+  whiteGoals: number;
+  redOwnGoals: number;
+  whiteOwnGoals: number;
   playerStats: Record<string, PlayerMatchStats>;
   matched: ParsedPlayerStat[];
   unmatched: ParsedPlayerStat[];
@@ -32,8 +42,8 @@ function cleanName(name: string): string {
  */
 function findMatchingPlayer(
   parsedName: string,
-  players: { uid: string; name: string }[]
-): { uid: string; name: string } | undefined {
+  players: PlayerWithTeam[]
+): PlayerWithTeam | undefined {
   const target = cleanName(parsedName);
   if (!target) return undefined;
 
@@ -90,16 +100,66 @@ function findMatchingPlayer(
 }
 
 /**
+ * Calculates match scores strictly from player goals and opponent own goals
+ * Team Red Score = Red Goals + White Own Goals
+ * Team White Score = White Goals + Red Own Goals
+ */
+export function calculateScoresFromStats(
+  playerStats: Record<string, PlayerMatchStats>,
+  teamRed: string[] = [],
+  teamWhite: string[] = []
+): {
+  scoreRed: number;
+  scoreWhite: number;
+  redGoals: number;
+  whiteGoals: number;
+  redOwnGoals: number;
+  whiteOwnGoals: number;
+} {
+  let redGoals = 0;
+  let redOwnGoals = 0;
+  let whiteGoals = 0;
+  let whiteOwnGoals = 0;
+
+  teamRed.forEach(uid => {
+    const s = playerStats[uid];
+    if (s) {
+      redGoals += s.goals || 0;
+      redOwnGoals += s.ownGoals || 0;
+    }
+  });
+
+  teamWhite.forEach(uid => {
+    const s = playerStats[uid];
+    if (s) {
+      whiteGoals += s.goals || 0;
+      whiteOwnGoals += s.ownGoals || 0;
+    }
+  });
+
+  return {
+    scoreRed: redGoals + whiteOwnGoals,
+    scoreWhite: whiteGoals + redOwnGoals,
+    redGoals,
+    whiteGoals,
+    redOwnGoals,
+    whiteOwnGoals,
+  };
+}
+
+/**
  * Parses raw text copied from WhatsApp or notes and allocates goals/assists/scores
+ * Does NOT take the final score from text lines (like '12-10').
+ * Calculates final scores strictly from parsed goals and opponent own goals.
  */
 export function parseMatchSummary(
   rawText: string,
-  players: { uid: string; name: string }[]
+  players: PlayerWithTeam[],
+  teamRedUids?: string[],
+  teamWhiteUids?: string[]
 ): ParseSummaryResult {
   const lines = rawText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
 
-  let scoreRed: number | undefined;
-  let scoreWhite: number | undefined;
   const playerStats: Record<string, PlayerMatchStats> = {};
   const matched: ParsedPlayerStat[] = [];
   const unmatched: ParsedPlayerStat[] = [];
@@ -110,11 +170,9 @@ export function parseMatchSummary(
       continue;
     }
 
-    // 2. Check for score line (e.g. "12-10", "12 - 10", "12:10")
-    const scoreMatch = line.match(/^\s*(\d+)\s*[-:]\s*(\d+)\s*$/);
-    if (scoreMatch) {
-      scoreRed = parseInt(scoreMatch[1], 10);
-      scoreWhite = parseInt(scoreMatch[2], 10);
+    // 2. Explicitly skip standalone score line (e.g. "12-10", "12 - 10", "12:10")
+    // Do NOT take score from text - we derive score directly from parsed player goals & own goals!
+    if (/^\s*\d+\s*[-:]\s*\d+\s*$/.test(line)) {
       continue;
     }
 
@@ -168,11 +226,11 @@ export function parseMatchSummary(
     };
 
     // 5. Match with roster/team players
-    const match = findMatchingPlayer(cleanedLine, players);
+    const matchedPlayer = findMatchingPlayer(cleanedLine, players);
 
-    if (match) {
-      const existing = playerStats[match.uid] || { goals: 0, assists: 0 };
-      playerStats[match.uid] = {
+    if (matchedPlayer) {
+      const existing = playerStats[matchedPlayer.uid] || { goals: 0, assists: 0 };
+      playerStats[matchedPlayer.uid] = {
         goals: existing.goals + goals,
         assists: existing.assists + assists,
         ownGoals: (existing.ownGoals || 0) + ownGoals,
@@ -182,7 +240,7 @@ export function parseMatchSummary(
         line,
         parsedName: cleanedLine,
         stats: statsObj,
-        matchedPlayer: match,
+        matchedPlayer,
       });
     } else {
       unmatched.push({
@@ -193,9 +251,19 @@ export function parseMatchSummary(
     }
   }
 
+  // Derive red and white rosters for score calculation
+  const redList = teamRedUids || players.filter(p => p.team === 'red').map(p => p.uid);
+  const whiteList = teamWhiteUids || players.filter(p => p.team === 'white').map(p => p.uid);
+
+  const scores = calculateScoresFromStats(playerStats, redList, whiteList);
+
   return {
-    scoreRed,
-    scoreWhite,
+    scoreRed: scores.scoreRed,
+    scoreWhite: scores.scoreWhite,
+    redGoals: scores.redGoals,
+    whiteGoals: scores.whiteGoals,
+    redOwnGoals: scores.redOwnGoals,
+    whiteOwnGoals: scores.whiteOwnGoals,
     playerStats,
     matched,
     unmatched,
