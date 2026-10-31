@@ -174,7 +174,7 @@ export const MatchScoreModal: React.FC<MatchScoreModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-3 sm:p-4 backdrop-blur-xs">
-      <div className="bg-white rounded-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden shadow-2xl animate-fade-in-up">
+      <div className="bg-white rounded-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden shadow-2xl animate-fade-in-up">
         {/* Header */}
         <div className="bg-gradient-to-r from-gray-900 to-gray-800 p-4 sm:p-5 text-white flex justify-between items-center shrink-0">
           <div className="flex items-center gap-2.5">
@@ -417,100 +417,137 @@ export const MatchScoreModal: React.FC<MatchScoreModalProps> = ({
                     return (
                       <div
                         key={uid}
-                        className="bg-white p-2.5 rounded-lg border border-red-100 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+                        className="bg-white p-3 rounded-xl border border-red-100 shadow-2xs flex flex-col gap-2.5 transition-all hover:border-red-200"
                       >
-                        <div className="flex items-center gap-2 min-w-0">
-                          {pos && (
-                            <span
-                              className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase border shrink-0 ${getPosBadgeColor(
-                                pos
-                              )}`}
-                            >
-                              {pos}
+                        {/* Player Header: Position badge & Full Name */}
+                        <div className="flex items-center justify-between gap-2 min-w-0">
+                          <div className="flex items-center gap-2 min-w-0">
+                            {pos && (
+                              <span
+                                className={`px-1.5 py-0.5 rounded text-[10px] font-black uppercase border shrink-0 ${getPosBadgeColor(
+                                  pos
+                                )}`}
+                              >
+                                {pos}
+                              </span>
+                            )}
+                            <span className="text-sm font-bold text-gray-900 truncate" title={name}>
+                              {name}
                             </span>
+                          </div>
+                          {((stats.goals || 0) > 0 || (stats.assists || 0) > 0 || (stats.ownGoals || 0) > 0) && (
+                            <div className="flex items-center gap-1 text-[11px] font-bold shrink-0">
+                              {(stats.goals || 0) > 0 && (
+                                <span className="text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                  ⚽ {stats.goals}
+                                </span>
+                              )}
+                              {(stats.assists || 0) > 0 && (
+                                <span className="text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
+                                  👟 {stats.assists}
+                                </span>
+                              )}
+                              {(stats.ownGoals || 0) > 0 && (
+                                <span className="text-red-700 bg-red-50 px-1.5 py-0.5 rounded border border-red-200">
+                                  OG {stats.ownGoals}
+                                </span>
+                              )}
+                            </div>
                           )}
-                          <span className="text-xs font-bold text-gray-900 truncate" title={name}>
-                            {name}
-                          </span>
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-2.5 shrink-0 self-end sm:self-auto">
+                        {/* Stepper Controls Row */}
+                        <div className="flex flex-wrap items-center justify-between sm:justify-start gap-2.5 sm:gap-4 pt-2 border-t border-gray-100">
                           {/* Goals Stepper */}
-                          <div className="flex items-center gap-1" title="Goals scored">
-                            <span className="text-[11px] font-bold text-gray-500">⚽</span>
-                            <button
-                              type="button"
-                              onClick={() => handleStatChange(uid, 'goals', -1)}
-                              className="w-5 h-5 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center transition"
-                            >
-                              -
-                            </button>
-                            <input
-                              type="number"
-                              min="0"
-                              value={stats.goals || 0}
-                              onChange={e => handleStatInput(uid, 'goals', e.target.value)}
-                              className="w-7 h-5 text-center text-xs font-bold bg-white border border-gray-200 rounded font-mono"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => handleStatChange(uid, 'goals', 1)}
-                              className="w-5 h-5 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center transition"
-                            >
-                              +
-                            </button>
+                          <div className="flex items-center gap-1.5" title="Goals scored">
+                            <span className="text-xs font-semibold text-gray-700 flex items-center gap-1">
+                              <span>⚽</span>
+                              <span className="text-[11px]">Goals</span>
+                            </span>
+                            <div className="flex items-center">
+                              <button
+                                type="button"
+                                onClick={() => handleStatChange(uid, 'goals', -1)}
+                                className="w-6 h-6 rounded-l bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center transition active:scale-95"
+                              >
+                                -
+                              </button>
+                              <input
+                                type="number"
+                                min="0"
+                                value={stats.goals || 0}
+                                onChange={e => handleStatInput(uid, 'goals', e.target.value)}
+                                className="w-8 h-6 text-center text-xs font-bold bg-white border-y border-gray-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleStatChange(uid, 'goals', 1)}
+                                className="w-6 h-6 rounded-r bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center transition active:scale-95"
+                              >
+                                +
+                              </button>
+                            </div>
                           </div>
 
                           {/* Assists Stepper */}
-                          <div className="flex items-center gap-1" title="Assists">
-                            <span className="text-[11px] font-bold text-gray-500">👟</span>
-                            <button
-                              type="button"
-                              onClick={() => handleStatChange(uid, 'assists', -1)}
-                              className="w-5 h-5 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center transition"
-                            >
-                              -
-                            </button>
-                            <input
-                              type="number"
-                              min="0"
-                              value={stats.assists || 0}
-                              onChange={e => handleStatInput(uid, 'assists', e.target.value)}
-                              className="w-7 h-5 text-center text-xs font-bold bg-white border border-gray-200 rounded font-mono"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => handleStatChange(uid, 'assists', 1)}
-                              className="w-5 h-5 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center transition"
-                            >
-                              +
-                            </button>
+                          <div className="flex items-center gap-1.5" title="Assists">
+                            <span className="text-xs font-semibold text-gray-700 flex items-center gap-1">
+                              <span>👟</span>
+                              <span className="text-[11px]">Assists</span>
+                            </span>
+                            <div className="flex items-center">
+                              <button
+                                type="button"
+                                onClick={() => handleStatChange(uid, 'assists', -1)}
+                                className="w-6 h-6 rounded-l bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center transition active:scale-95"
+                              >
+                                -
+                              </button>
+                              <input
+                                type="number"
+                                min="0"
+                                value={stats.assists || 0}
+                                onChange={e => handleStatInput(uid, 'assists', e.target.value)}
+                                className="w-8 h-6 text-center text-xs font-bold bg-white border-y border-gray-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleStatChange(uid, 'assists', 1)}
+                                className="w-6 h-6 rounded-r bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center transition active:scale-95"
+                              >
+                                +
+                              </button>
+                            </div>
                           </div>
 
                           {/* Own Goals Stepper */}
-                          <div className="flex items-center gap-1" title="Own Goals (Counts for Team White)">
-                            <span className="text-[10px] font-bold text-red-500">OG:</span>
-                            <button
-                              type="button"
-                              onClick={() => handleStatChange(uid, 'ownGoals', -1)}
-                              className="w-5 h-5 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center transition"
-                            >
-                              -
-                            </button>
-                            <input
-                              type="number"
-                              min="0"
-                              value={stats.ownGoals || 0}
-                              onChange={e => handleStatInput(uid, 'ownGoals', e.target.value)}
-                              className="w-7 h-5 text-center text-xs font-bold bg-white border border-gray-200 rounded font-mono"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => handleStatChange(uid, 'ownGoals', 1)}
-                              className="w-5 h-5 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center transition"
-                            >
-                              +
-                            </button>
+                          <div className="flex items-center gap-1.5" title="Own Goals (Counts for Team White)">
+                            <span className="text-xs font-semibold text-red-600 flex items-center gap-1">
+                              <span className="text-[10px] font-bold">OG:</span>
+                            </span>
+                            <div className="flex items-center">
+                              <button
+                                type="button"
+                                onClick={() => handleStatChange(uid, 'ownGoals', -1)}
+                                className="w-6 h-6 rounded-l bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center transition active:scale-95"
+                              >
+                                -
+                              </button>
+                              <input
+                                type="number"
+                                min="0"
+                                value={stats.ownGoals || 0}
+                                onChange={e => handleStatInput(uid, 'ownGoals', e.target.value)}
+                                className="w-8 h-6 text-center text-xs font-bold bg-white border-y border-gray-200 focus:outline-none focus:ring-1 focus:ring-red-500 font-mono"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleStatChange(uid, 'ownGoals', 1)}
+                                className="w-6 h-6 rounded-r bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center transition active:scale-95"
+                              >
+                                +
+                              </button>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -543,100 +580,137 @@ export const MatchScoreModal: React.FC<MatchScoreModalProps> = ({
                     return (
                       <div
                         key={uid}
-                        className="bg-white p-2.5 rounded-lg border border-slate-200 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+                        className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs flex flex-col gap-2.5 transition-all hover:border-slate-300"
                       >
-                        <div className="flex items-center gap-2 min-w-0">
-                          {pos && (
-                            <span
-                              className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase border shrink-0 ${getPosBadgeColor(
-                                pos
-                              )}`}
-                            >
-                              {pos}
+                        {/* Player Header: Position badge & Full Name */}
+                        <div className="flex items-center justify-between gap-2 min-w-0">
+                          <div className="flex items-center gap-2 min-w-0">
+                            {pos && (
+                              <span
+                                className={`px-1.5 py-0.5 rounded text-[10px] font-black uppercase border shrink-0 ${getPosBadgeColor(
+                                  pos
+                                )}`}
+                              >
+                                {pos}
+                              </span>
+                            )}
+                            <span className="text-sm font-bold text-gray-900 truncate" title={name}>
+                              {name}
                             </span>
+                          </div>
+                          {((stats.goals || 0) > 0 || (stats.assists || 0) > 0 || (stats.ownGoals || 0) > 0) && (
+                            <div className="flex items-center gap-1 text-[11px] font-bold shrink-0">
+                              {(stats.goals || 0) > 0 && (
+                                <span className="text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                  ⚽ {stats.goals}
+                                </span>
+                              )}
+                              {(stats.assists || 0) > 0 && (
+                                <span className="text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
+                                  👟 {stats.assists}
+                                </span>
+                              )}
+                              {(stats.ownGoals || 0) > 0 && (
+                                <span className="text-red-700 bg-red-50 px-1.5 py-0.5 rounded border border-red-200">
+                                  OG {stats.ownGoals}
+                                </span>
+                              )}
+                            </div>
                           )}
-                          <span className="text-xs font-bold text-gray-900 truncate" title={name}>
-                            {name}
-                          </span>
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-2.5 shrink-0 self-end sm:self-auto">
+                        {/* Stepper Controls Row */}
+                        <div className="flex flex-wrap items-center justify-between sm:justify-start gap-2.5 sm:gap-4 pt-2 border-t border-gray-100">
                           {/* Goals Stepper */}
-                          <div className="flex items-center gap-1" title="Goals scored">
-                            <span className="text-[11px] font-bold text-gray-500">⚽</span>
-                            <button
-                              type="button"
-                              onClick={() => handleStatChange(uid, 'goals', -1)}
-                              className="w-5 h-5 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center transition"
-                            >
-                              -
-                            </button>
-                            <input
-                              type="number"
-                              min="0"
-                              value={stats.goals || 0}
-                              onChange={e => handleStatInput(uid, 'goals', e.target.value)}
-                              className="w-7 h-5 text-center text-xs font-bold bg-white border border-gray-200 rounded font-mono"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => handleStatChange(uid, 'goals', 1)}
-                              className="w-5 h-5 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center transition"
-                            >
-                              +
-                            </button>
+                          <div className="flex items-center gap-1.5" title="Goals scored">
+                            <span className="text-xs font-semibold text-gray-700 flex items-center gap-1">
+                              <span>⚽</span>
+                              <span className="text-[11px]">Goals</span>
+                            </span>
+                            <div className="flex items-center">
+                              <button
+                                type="button"
+                                onClick={() => handleStatChange(uid, 'goals', -1)}
+                                className="w-6 h-6 rounded-l bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center transition active:scale-95"
+                              >
+                                -
+                              </button>
+                              <input
+                                type="number"
+                                min="0"
+                                value={stats.goals || 0}
+                                onChange={e => handleStatInput(uid, 'goals', e.target.value)}
+                                className="w-8 h-6 text-center text-xs font-bold bg-white border-y border-gray-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleStatChange(uid, 'goals', 1)}
+                                className="w-6 h-6 rounded-r bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center transition active:scale-95"
+                              >
+                                +
+                              </button>
+                            </div>
                           </div>
 
                           {/* Assists Stepper */}
-                          <div className="flex items-center gap-1" title="Assists">
-                            <span className="text-[11px] font-bold text-gray-500">👟</span>
-                            <button
-                              type="button"
-                              onClick={() => handleStatChange(uid, 'assists', -1)}
-                              className="w-5 h-5 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center transition"
-                            >
-                              -
-                            </button>
-                            <input
-                              type="number"
-                              min="0"
-                              value={stats.assists || 0}
-                              onChange={e => handleStatInput(uid, 'assists', e.target.value)}
-                              className="w-7 h-5 text-center text-xs font-bold bg-white border border-gray-200 rounded font-mono"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => handleStatChange(uid, 'assists', 1)}
-                              className="w-5 h-5 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center transition"
-                            >
-                              +
-                            </button>
+                          <div className="flex items-center gap-1.5" title="Assists">
+                            <span className="text-xs font-semibold text-gray-700 flex items-center gap-1">
+                              <span>👟</span>
+                              <span className="text-[11px]">Assists</span>
+                            </span>
+                            <div className="flex items-center">
+                              <button
+                                type="button"
+                                onClick={() => handleStatChange(uid, 'assists', -1)}
+                                className="w-6 h-6 rounded-l bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center transition active:scale-95"
+                              >
+                                -
+                              </button>
+                              <input
+                                type="number"
+                                min="0"
+                                value={stats.assists || 0}
+                                onChange={e => handleStatInput(uid, 'assists', e.target.value)}
+                                className="w-8 h-6 text-center text-xs font-bold bg-white border-y border-gray-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleStatChange(uid, 'assists', 1)}
+                                className="w-6 h-6 rounded-r bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center transition active:scale-95"
+                              >
+                                +
+                              </button>
+                            </div>
                           </div>
 
                           {/* Own Goals Stepper */}
-                          <div className="flex items-center gap-1" title="Own Goals (Counts for Team Red)">
-                            <span className="text-[10px] font-bold text-red-500">OG:</span>
-                            <button
-                              type="button"
-                              onClick={() => handleStatChange(uid, 'ownGoals', -1)}
-                              className="w-5 h-5 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center transition"
-                            >
-                              -
-                            </button>
-                            <input
-                              type="number"
-                              min="0"
-                              value={stats.ownGoals || 0}
-                              onChange={e => handleStatInput(uid, 'ownGoals', e.target.value)}
-                              className="w-7 h-5 text-center text-xs font-bold bg-white border border-gray-200 rounded font-mono"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => handleStatChange(uid, 'ownGoals', 1)}
-                              className="w-5 h-5 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center transition"
-                            >
-                              +
-                            </button>
+                          <div className="flex items-center gap-1.5" title="Own Goals (Counts for Team Red)">
+                            <span className="text-xs font-semibold text-red-600 flex items-center gap-1">
+                              <span className="text-[10px] font-bold">OG:</span>
+                            </span>
+                            <div className="flex items-center">
+                              <button
+                                type="button"
+                                onClick={() => handleStatChange(uid, 'ownGoals', -1)}
+                                className="w-6 h-6 rounded-l bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center transition active:scale-95"
+                              >
+                                -
+                              </button>
+                              <input
+                                type="number"
+                                min="0"
+                                value={stats.ownGoals || 0}
+                                onChange={e => handleStatInput(uid, 'ownGoals', e.target.value)}
+                                className="w-8 h-6 text-center text-xs font-bold bg-white border-y border-gray-200 focus:outline-none focus:ring-1 focus:ring-red-500 font-mono"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleStatChange(uid, 'ownGoals', 1)}
+                                className="w-6 h-6 rounded-r bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center transition active:scale-95"
+                              >
+                                +
+                              </button>
+                            </div>
                           </div>
                         </div>
                       </div>
