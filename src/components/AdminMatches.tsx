@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { collection, addDoc, query, onSnapshot, serverTimestamp, orderBy, updateDoc, doc, runTransaction } from 'firebase/firestore';
 import { db } from '../firebase';
-import type { Match } from '../types';
-import { Calendar, MapPin, Clock, Edit2, Trash2, X, PlusCircle, Share2, Shield } from 'lucide-react';
+import type { Match, UpiPayee } from '../types';
+import { Calendar, MapPin, Clock, Edit2, Trash2, X, PlusCircle, Share2, Shield, QrCode, Upload } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
@@ -17,6 +17,16 @@ export const AdminMatches: React.FC = () => {
   const [isAddingVenue, setIsAddingVenue] = useState(false);
   const [newVenueName, setNewVenueName] = useState('');
   const [newVenueLink, setNewVenueLink] = useState('');
+
+  // Payees State
+  const [payees, setPayees] = useState<UpiPayee[]>([]);
+  const [selectedPayeeId, setSelectedPayeeId] = useState('');
+  const [isAddingPayee, setIsAddingPayee] = useState(false);
+  const [newPayeeName, setNewPayeeName] = useState('');
+  const [newPayeeUpiId, setNewPayeeUpiId] = useState('');
+  const [newPayeeQrCode, setNewPayeeQrCode] = useState<string | null>(null);
+  const [isCompressingQr, setIsCompressingQr] = useState(false);
+  const [legacyUpiId, setLegacyUpiId] = useState('');
 
   // Form State
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -74,9 +84,18 @@ export const AdminMatches: React.FC = () => {
       setVenues(fetchedVenues);
     });
 
+    // Fetch payees
+    const qPayees = query(collection(db, 'upi_payees'), orderBy('name', 'asc'));
+    const unsubscribePayees = onSnapshot(qPayees, (snapshot) => {
+      const fetchedPayees: UpiPayee[] = [];
+      snapshot.forEach(d => fetchedPayees.push({ id: d.id, ...d.data() } as UpiPayee));
+      setPayees(fetchedPayees);
+    });
+
     return () => {
       unsubscribeMatches();
       unsubscribeVenues();
+      unsubscribePayees();
     };
   }, []);
 
@@ -97,10 +116,90 @@ export const AdminMatches: React.FC = () => {
     }
   };
 
+  const handleQrCodeFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsCompressingQr(true);
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 600;
+        const scaleSize = Math.min(1, MAX_WIDTH / img.width);
+        canvas.width = Math.round(img.width * scaleSize);
+        canvas.height = Math.round(img.height * scaleSize);
+        
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
+        
+        const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+        setNewPayeeQrCode(compressedDataUrl);
+        setIsCompressingQr(false);
+      };
+      img.onerror = () => {
+        alert("Failed to process QR code image.");
+        setIsCompressingQr(false);
+      };
+    };
+    reader.onerror = () => {
+      alert("Failed to read image file.");
+      setIsCompressingQr(false);
+    };
+  };
+
+  const handleSaveNewPayee = async () => {
+    if (!newPayeeName.trim() || !newPayeeUpiId.trim()) {
+      alert('Please provide both Name and UPI ID.');
+      return;
+    }
+    try {
+      const docRef = await addDoc(collection(db, 'upi_payees'), {
+        name: newPayeeName.trim(),
+        upiId: newPayeeUpiId.trim(),
+        qrCodeUrl: newPayeeQrCode || '',
+        createdAt: serverTimestamp()
+      });
+      setSelectedPayeeId(docRef.id);
+      setIsAddingPayee(false);
+      setNewPayeeName('');
+      setNewPayeeUpiId('');
+      setNewPayeeQrCode(null);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to save payee');
+    }
+  };
+
+  const handleDeletePayee = async (payeeId: string, payeeName: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (window.confirm(`Are you sure you want to delete payee "${payeeName}"?`)) {
+      try {
+        const { deleteDoc, doc } = await import('firebase/firestore');
+        await deleteDoc(doc(db, 'upi_payees', payeeId));
+        if (selectedPayeeId === payeeId) {
+          setSelectedPayeeId('');
+        }
+      } catch (err) {
+        console.error(err);
+        alert('Failed to delete payee');
+      }
+    }
+  };
+
   const resetForm = () => {
     setEditingId(null);
     setDate('');
     setSelectedVenueId('');
+    setSelectedPayeeId('');
+    setIsAddingPayee(false);
+    setNewPayeeName('');
+    setNewPayeeUpiId('');
+    setNewPayeeQrCode(null);
+    setLegacyUpiId('');
     setYoutubeLink('');
     setDefaultTimes();
     setMaxPlayers(12);
@@ -121,10 +220,23 @@ export const AdminMatches: React.FC = () => {
     if (foundVenue) {
       setSelectedVenueId(foundVenue.id);
     } else {
-      // Legacy match with string venue not in DB
-      // We can just add it silently or leave it unselected
       setSelectedVenueId('');
       alert(`Warning: This match uses a legacy venue "${m.venue}". Please select a venue from the dropdown to continue saving.`);
+    }
+
+    // Find payee by UPI ID or name
+    if (m.upiId) {
+      const foundPayee = payees.find(p => p.upiId.toLowerCase() === m.upiId?.toLowerCase());
+      if (foundPayee) {
+        setSelectedPayeeId(foundPayee.id);
+        setLegacyUpiId('');
+      } else {
+        setSelectedPayeeId('');
+        setLegacyUpiId(m.upiId);
+      }
+    } else {
+      setSelectedPayeeId('');
+      setLegacyUpiId('');
     }
     
     setTier1Unlock(toLocalFormat(new Date(m.tier1UnlockTime)));
@@ -271,6 +383,11 @@ export const AdminMatches: React.FC = () => {
       return;
     }
 
+    if (isAddingPayee) {
+      alert("Please click 'Save & Select Person' to finish adding the payee before saving the match.");
+      return;
+    }
+
     setLoading(true);
     
     if (!selectedVenueId) {
@@ -309,6 +426,12 @@ export const AdminMatches: React.FC = () => {
       return;
     }
 
+    const selectedPayee = payees.find(p => p.id === selectedPayeeId);
+    const editingMatch = editingId ? matches.find(m => m.id === editingId) : null;
+    const finalUpiId = selectedPayee ? selectedPayee.upiId.trim() : (legacyUpiId.trim() || upiId.trim());
+    const finalUpiQrCode = selectedPayee ? (selectedPayee.qrCodeUrl || '') : (editingMatch?.upiQrCode || '');
+    const finalPayeeName = selectedPayee ? selectedPayee.name.trim() : (editingMatch?.payeeName || '');
+
     try {
       const matchData = {
         date,
@@ -322,7 +445,9 @@ export const AdminMatches: React.FC = () => {
         pricePerPerson: pricePerPerson === '' ? null : Number(pricePerPerson),
         requirePaymentTier1,
         requirePaymentTier23,
-        upiId: upiId.trim(),
+        upiId: finalUpiId,
+        upiQrCode: finalUpiQrCode,
+        payeeName: finalPayeeName,
         youtubeLink: youtubeLink.trim()
       };
 
@@ -347,6 +472,8 @@ export const AdminMatches: React.FC = () => {
       setLoading(false);
     }
   };
+
+  const selectedPayee = payees.find(p => p.id === selectedPayeeId);
 
   return (
     <div className="space-y-6">
@@ -433,9 +560,165 @@ export const AdminMatches: React.FC = () => {
               </label>
             </div>
             <div className="lg:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Admin UPI ID (for receiving payments)</label>
-              <input type="text" placeholder="e.g. yourname@okbank" value={upiId} onChange={e => setUpiId(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-emerald-500 focus:border-emerald-500" />
+              <div className="flex justify-between items-center mb-1">
+                <label className="block text-sm font-medium text-gray-700">Payment Recipient / Person Who Paid</label>
+                {selectedPayee && !isAddingPayee && (
+                  <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                    UPI Active
+                  </span>
+                )}
+              </div>
+
+              {isAddingPayee ? (
+                <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 space-y-3">
+                  <div className="flex justify-between items-center">
+                    <h4 className="font-bold text-gray-900 text-sm">Add Person Who Paid for Match</h4>
+                    <button 
+                      type="button" 
+                      onClick={() => {
+                        setIsAddingPayee(false);
+                        setNewPayeeName('');
+                        setNewPayeeUpiId('');
+                        setNewPayeeQrCode(null);
+                      }} 
+                      className="text-gray-400 hover:text-gray-600"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Person's Name</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. Anshul" 
+                      value={newPayeeName} 
+                      onChange={e => setNewPayeeName(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-emerald-500 text-sm" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">UPI ID</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. yourname@okbank" 
+                      value={newPayeeUpiId} 
+                      onChange={e => setNewPayeeUpiId(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-emerald-500 text-sm" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">UPI QR Code (Image)</label>
+                    {!newPayeeQrCode ? (
+                      <label className="border-2 border-dashed border-gray-300 hover:border-emerald-400 bg-white p-3 rounded-lg flex items-center justify-center gap-2 cursor-pointer transition">
+                        <Upload className="w-4 h-4 text-gray-400" />
+                        <span className="text-xs text-gray-600 font-medium">
+                          {isCompressingQr ? 'Processing Image...' : 'Upload QR Code Image'}
+                        </span>
+                        <input 
+                          type="file" 
+                          accept="image/*" 
+                          onChange={handleQrCodeFileChange} 
+                          className="hidden" 
+                          disabled={isCompressingQr}
+                        />
+                      </label>
+                    ) : (
+                      <div className="flex items-center gap-3 bg-white p-2 rounded-lg border border-gray-200">
+                        <img 
+                          src={newPayeeQrCode} 
+                          alt="QR Preview" 
+                          className="w-14 h-14 object-contain rounded border border-gray-200" 
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-bold text-gray-800">QR Code Ready</p>
+                          <p className="text-[11px] text-gray-500">Compressed for fast 100% free storage</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setNewPayeeQrCode(null)}
+                          className="p-1 text-gray-400 hover:text-red-500 rounded"
+                          title="Remove QR code"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  <button 
+                    type="button" 
+                    onClick={handleSaveNewPayee} 
+                    disabled={!newPayeeName.trim() || !newPayeeUpiId.trim() || isCompressingQr}
+                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 rounded text-sm disabled:opacity-50 transition"
+                  >
+                    Save & Select Person
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex gap-2">
+                    <select 
+                      value={selectedPayeeId}
+                      onChange={e => {
+                        if (e.target.value === 'ADD_NEW') {
+                          setIsAddingPayee(true);
+                        } else {
+                          setSelectedPayeeId(e.target.value);
+                        }
+                      }}
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-emerald-500 focus:border-emerald-500 text-sm"
+                    >
+                      <option value="">-- Select Person Who Paid --</option>
+                      {payees.map(p => (
+                        <option key={p.id} value={p.id}>
+                          {p.name} ({p.upiId})
+                        </option>
+                      ))}
+                      {legacyUpiId && !payees.some(p => p.upiId.toLowerCase() === legacyUpiId.toLowerCase()) && (
+                        <option value="LEGACY" disabled>
+                          Legacy Match UPI: {legacyUpiId}
+                        </option>
+                      )}
+                      <option value="ADD_NEW" className="font-bold text-emerald-600">
+                        + Add New Person...
+                      </option>
+                    </select>
+                    {selectedPayee && (
+                      <button
+                        type="button"
+                        onClick={(e) => handleDeletePayee(selectedPayee.id, selectedPayee.name, e)}
+                        className="px-2.5 py-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md border border-gray-200 transition"
+                        title={`Delete ${selectedPayee.name} from saved payees`}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+
+                  {selectedPayee && (
+                    <div className="flex items-center gap-3 bg-emerald-50/70 border border-emerald-200 rounded-lg p-2.5">
+                      {selectedPayee.qrCodeUrl ? (
+                        <img 
+                          src={selectedPayee.qrCodeUrl} 
+                          alt={`${selectedPayee.name}'s QR Code`} 
+                          className="w-10 h-10 object-contain rounded border border-emerald-300 bg-white shrink-0"
+                          title="QR Code Attached"
+                        />
+                      ) : (
+                        <div className="w-10 h-10 rounded border border-emerald-200 bg-emerald-100 flex items-center justify-center shrink-0 text-emerald-600">
+                          <QrCode className="w-5 h-5" />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-bold text-gray-900 truncate">{selectedPayee.name}</p>
+                        <p className="text-xs font-mono text-emerald-800 truncate">{selectedPayee.upiId}</p>
+                      </div>
+                      <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded">
+                        {selectedPayee.qrCodeUrl ? 'QR Code Added' : 'No QR Code'}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             
             <div className="lg:col-span-3">
@@ -463,7 +746,7 @@ export const AdminMatches: React.FC = () => {
                 className="w-full px-3 py-2 border border-amber-200 rounded-md focus:ring-amber-500 bg-white" />
             </div>
           </div>
-          <button type="submit" disabled={loading || isAddingVenue}
+          <button type="submit" disabled={loading || isAddingVenue || isAddingPayee}
             className="w-full bg-gray-900 hover:bg-black text-white font-bold py-3 px-4 rounded-lg mt-4 disabled:opacity-50">
             {loading ? 'Saving...' : (editingId ? 'Save Changes' : 'Create Match Draft (Dormant)')}
           </button>
@@ -492,6 +775,12 @@ export const AdminMatches: React.FC = () => {
                   <p className="text-gray-600 flex items-center gap-1 mt-1 text-sm">
                     <MapPin className="w-4 h-4" /> {match.venue}
                   </p>
+                  {match.upiId && (
+                    <p className="text-gray-600 flex items-center gap-1 mt-1 text-xs">
+                      <QrCode className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <span>UPI: <span className="font-semibold text-gray-800">{match.payeeName ? `${match.payeeName} (${match.upiId})` : match.upiId}</span></span>
+                    </p>
+                  )}
                   {match.youtubeLink && (
                     <a href={match.youtubeLink} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 mt-2 text-xs font-bold text-red-600 hover:text-red-700 bg-red-50 px-2 py-1 rounded">
                       ▶ Watch Highlights

@@ -64,6 +64,8 @@ export interface Match {
   requirePaymentTier1?: boolean;
   requirePaymentTier23?: boolean;
   upiId?: string;
+  upiQrCode?: string;
+  payeeName?: string;
   payments?: {
     [uid: string]: {
       screenshotUrl: string;
@@ -72,5 +74,13 @@ export interface Match {
     }
   };
   createdAt: any;
+}
+
+export interface UpiPayee {
+  id: string;
+  name: string;
+  upiId: string;
+  qrCodeUrl?: string;
+  createdAt?: any;
 }
 

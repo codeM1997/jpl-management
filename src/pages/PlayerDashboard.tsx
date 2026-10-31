@@ -333,7 +333,7 @@ export const PlayerDashboard: React.FC = () => {
               <p className="font-bold mb-1 flex items-center justify-center gap-1">
                 <AlertCircle className="w-5 h-5" /> Payment Info
               </p>
-              <p>Please pay <b>₹{upcomingMatch.pricePerPerson}</b> to <b>{upcomingMatch.upiId}</b>.</p>
+              <p>Please pay <b>₹{upcomingMatch.pricePerPerson}</b> to <b>{upcomingMatch.upiId}</b>{upcomingMatch.payeeName ? ` (${upcomingMatch.payeeName})` : ''}.</p>
             </div>
           )}
 
@@ -451,7 +451,7 @@ export const PlayerDashboard: React.FC = () => {
                   <p className="font-bold mb-1 flex items-center gap-1">
                     <AlertCircle className="w-4 h-4" /> Payment Info
                   </p>
-                  <p>Please pay <b>₹{upcomingMatch.pricePerPerson}</b> to <b>{upcomingMatch.upiId}</b>.</p>
+                  <p>Please pay <b>₹{upcomingMatch.pricePerPerson}</b> to <b>{upcomingMatch.upiId}</b>{upcomingMatch.payeeName ? ` (${upcomingMatch.payeeName})` : ''}.</p>
                 </div>
               )}
 

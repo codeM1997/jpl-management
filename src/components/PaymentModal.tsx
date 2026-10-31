@@ -72,8 +72,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ match, userId, onClo
 
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl animate-fade-in-up">
-        <div className="bg-emerald-600 p-4 text-white flex justify-between items-center relative overflow-hidden">
+      <div className="bg-white rounded-2xl w-full max-w-md max-h-[92vh] flex flex-col overflow-hidden shadow-2xl animate-fade-in-up">
+        <div className="bg-emerald-600 p-4 text-white flex justify-between items-center relative overflow-hidden shrink-0">
           <div className="absolute -right-4 -top-4 w-24 h-24 bg-white/10 rounded-full blur-2xl"></div>
           <h2 className="text-xl font-black relative z-10">Secure Your Spot</h2>
           <button onClick={onClose} className="text-emerald-100 hover:text-white transition relative z-10">
@@ -81,28 +81,44 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ match, userId, onClo
           </button>
         </div>
         
-        <div className="p-6">
+        <div className="p-6 overflow-y-auto">
           <div className="text-center mb-6">
             <p className="text-gray-500 text-sm font-medium mb-1">Match Fee</p>
             <div className="text-5xl font-black text-gray-900">₹{price}</div>
           </div>
 
           <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-6 text-center">
-            <p className="text-sm font-bold text-gray-700 uppercase tracking-wider mb-2">1. Send Payment To</p>
+            <p className="text-sm font-bold text-gray-700 uppercase tracking-wider mb-2">
+              1. Send Payment To {match.payeeName ? `(${match.payeeName})` : ''}
+            </p>
+
+            {match.upiQrCode && (
+              <div className="mb-3 flex flex-col items-center">
+                <div className="p-2 bg-white rounded-xl shadow-sm border border-gray-200 inline-block">
+                  <img 
+                    src={match.upiQrCode} 
+                    alt="UPI QR Code" 
+                    className="w-44 h-44 object-contain rounded-lg"
+                  />
+                </div>
+                <p className="text-[11px] text-gray-500 mt-1 font-medium">Scan QR code using GPay, PhonePe, or Paytm</p>
+              </div>
+            )}
+
             <div className="flex items-center justify-center gap-2 mb-2">
-              <span className="text-xl md:text-2xl font-black text-emerald-700 select-all tracking-wide">{upiId}</span>
+              <span className="text-lg md:text-xl font-black text-emerald-700 select-all tracking-wide font-mono">{upiId}</span>
               <button 
                 onClick={() => {
                   navigator.clipboard.writeText(upiId);
                   alert("UPI ID copied to clipboard!");
                 }}
-                className="p-2 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded-lg transition"
+                className="p-1.5 px-3 text-xs font-bold bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded-lg transition"
                 title="Copy UPI ID"
               >
                 Copy
               </button>
             </div>
-            <p className="text-xs text-gray-500 font-medium">Open any UPI app (GPay, PhonePe, Paytm) and send exactly <span className="font-bold text-gray-800">₹{price}</span></p>
+            <p className="text-xs text-gray-500 font-medium">Open any UPI app and send exactly <span className="font-bold text-gray-800">₹{price}</span></p>
           </div>
 
           <div className="mb-6">
