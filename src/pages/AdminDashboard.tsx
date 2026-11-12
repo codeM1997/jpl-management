@@ -3,11 +3,13 @@ import { Navbar } from '../components/Navbar';
 import { collection, query, where, onSnapshot, doc, updateDoc, deleteDoc, getDocs, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import type { AppUser, Tier, UserRole, Position } from '../types';
-import { Check, X, ShieldAlert, Edit2 } from 'lucide-react';
+import { Check, X, ShieldAlert, Edit2, SlidersHorizontal } from 'lucide-react';
 import { AdminMatches } from '../components/AdminMatches';
 import { useAuth } from '../context/AuthContext';
 import { calculatePositionRatings, normalizePlayer } from '../utils/ratingEngine';
 import { OFFICIAL_PLAYERS } from '../data/officialPlayers';
+import { PlayerCompareModal } from '../components/PlayerCompareModal';
+import { PLAYER_COLORS } from '../components/playerCompareTypes';
 
 interface AdminPlayerFormData {
   name: string;
@@ -57,6 +59,27 @@ export const AdminDashboard: React.FC = () => {
   // Editing Player State
   const [editingPlayer, setEditingPlayer] = useState<AppUser | null>(null);
   const [editData, setEditData] = useState<AdminPlayerFormData>(DEFAULT_FORM_DATA);
+
+  // Player Comparison State (up to 4 players)
+  const [comparePlayerUids, setComparePlayerUids] = useState<string[]>([]);
+  const [isCompareModalOpen, setIsCompareModalOpen] = useState(false);
+
+  const handleToggleCompare = (uid: string) => {
+    setComparePlayerUids(prev => {
+      if (prev.includes(uid)) {
+        return prev.filter(id => id !== uid);
+      }
+      if (prev.length >= 4) {
+        alert('You can compare up to 4 players at once. Please remove a player first.');
+        return prev;
+      }
+      return [...prev, uid];
+    });
+  };
+
+  const handleClearCompare = () => {
+    setComparePlayerUids([]);
+  };
 
   useEffect(() => {
     // Listen for pending users
@@ -567,18 +590,27 @@ export const AdminDashboard: React.FC = () => {
                 <h3 className="font-bold text-gray-900 text-base">Approved Players Directory</h3>
                 <p className="text-xs text-gray-500">Official Sunday 6v6 Player Ratings & Position Preferences</p>
               </div>
-              {isAdmin && import.meta.env.DEV && (
+              <div className="flex items-center gap-2 flex-wrap">
                 <button
-                  onClick={handleSeedOfficialPlayers}
-                  disabled={isSeeding}
-                  className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold py-2.5 px-4 rounded-xl transition shadow-xs flex items-center gap-2 cursor-pointer"
-                  title="Visible only in local development"
+                  onClick={() => setIsCompareModalOpen(true)}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold py-2.5 px-4 rounded-xl transition shadow-xs flex items-center gap-2 cursor-pointer"
                 >
-                  <span>🌱</span>
-                  <span>{isSeeding ? 'Seeding Official Players...' : 'Seed Official Players (24)'}</span>
-                  <span className="text-[9px] bg-emerald-800 text-emerald-200 px-1.5 py-0.5 rounded font-mono uppercase tracking-wide">Dev Only</span>
+                  <SlidersHorizontal className="w-3.5 h-3.5" />
+                  <span>Compare Players {comparePlayerUids.length > 0 ? `(${comparePlayerUids.length}/4)` : ''}</span>
                 </button>
-              )}
+                {isAdmin && import.meta.env.DEV && (
+                  <button
+                    onClick={handleSeedOfficialPlayers}
+                    disabled={isSeeding}
+                    className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold py-2.5 px-4 rounded-xl transition shadow-xs flex items-center gap-2 cursor-pointer"
+                    title="Visible only in local development"
+                  >
+                    <span>🌱</span>
+                    <span>{isSeeding ? 'Seeding Official Players...' : 'Seed Official Players (24)'}</span>
+                    <span className="text-[9px] bg-emerald-800 text-emerald-200 px-1.5 py-0.5 rounded font-mono uppercase tracking-wide">Dev Only</span>
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
@@ -590,6 +622,9 @@ export const AdminDashboard: React.FC = () => {
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                   <tr>
+                    <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-12">
+                      Compare
+                    </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Player</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tier</th>
@@ -600,8 +635,24 @@ export const AdminDashboard: React.FC = () => {
                 <tbody className="bg-white divide-y divide-gray-200">
                   {approvedUsers.map((user) => {
                     const norm = normalizePlayer(user);
+                    const isChecked = comparePlayerUids.includes(user.uid);
                     return (
-                      <tr key={user.uid}>
+                      <tr key={user.uid} className={isChecked ? 'bg-indigo-50/30' : ''}>
+                        <td className="px-3 py-4 whitespace-nowrap text-center">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => handleToggleCompare(user.uid)}
+                            className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 cursor-pointer"
+                            title={
+                              isChecked
+                                ? 'Deselect from comparison'
+                                : comparePlayerUids.length >= 4
+                                ? 'Maximum 4 players'
+                                : 'Select to compare'
+                            }
+                          />
+                        </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center">
                             <div>
@@ -899,6 +950,59 @@ export const AdminDashboard: React.FC = () => {
             </div>
           </div>
         )}
+
+        {/* Floating Compare Action Bar */}
+        {comparePlayerUids.length > 0 && activeTab === 'players' && (
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-gray-950/90 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-4 backdrop-blur-md border border-gray-800">
+            <div className="flex items-center gap-2.5">
+              <span className="text-xs font-bold text-gray-200">
+                {comparePlayerUids.length}/4 selected
+              </span>
+              <div className="flex -space-x-1.5">
+                {comparePlayerUids.map((uid, i) => {
+                  const u = approvedUsers.find(x => x.uid === uid);
+                  const color = PLAYER_COLORS[i % PLAYER_COLORS.length];
+                  return (
+                    <div
+                      key={uid}
+                      className="w-6 h-6 rounded-full border-2 border-gray-900 flex items-center justify-center text-[10px] font-bold text-white shadow-xs"
+                      style={{ backgroundColor: color.stroke }}
+                      title={u?.name}
+                    >
+                      {u?.name?.charAt(0) || '?'}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="h-4 w-px bg-gray-700" />
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsCompareModalOpen(true)}
+                className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold py-1.5 px-3.5 rounded-xl transition shadow-xs flex items-center gap-1.5 cursor-pointer"
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5" />
+                <span>Compare Now</span>
+              </button>
+              <button
+                onClick={handleClearCompare}
+                className="text-gray-400 hover:text-white text-xs py-1.5 px-2 rounded-lg transition cursor-pointer"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Player Comparison Modal */}
+        <PlayerCompareModal
+          isOpen={isCompareModalOpen}
+          onClose={() => setIsCompareModalOpen(false)}
+          allApprovedUsers={approvedUsers}
+          selectedUids={comparePlayerUids}
+          onTogglePlayer={handleToggleCompare}
+          onClearAll={handleClearCompare}
+        />
       </main>
     </div>
   );
